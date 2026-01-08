@@ -15,6 +15,9 @@ function drawHUD() {
   textSize(16);
   textAlign(LEFT, CENTER);
   text(`Score: ${score}`, 16, 26);
+  
+  // Barre de vie (cœurs) - à gauche sous le score
+  drawHealthBar();
 
   textAlign(CENTER, CENTER);
   text("Move: gesture '67' (webcam) | Turn: F | Jump: G (Makey Makey) | Fullscreen: P", width / 2, 26);
@@ -158,6 +161,64 @@ function drawHUD() {
 
   pop();
   camera.on();
+}
+
+function drawHealthBar() {
+  if (typeof heartImages === "undefined" || !heartImages || heartImages.length < 3) {
+    return; // Images pas encore chargées
+  }
+  
+  const heartHeight = 40; // Hauteur de référence pour un cœur
+  const heartSpacing = 8; // Espacement entre les cœurs
+  const startX = 16;
+  const startY = 50; // Sous le score
+  
+  // Calculer le nombre de demi-cœurs
+  const totalHalfHearts = GAME.maxHearts * 2;
+  const currentHalfHearts = Math.max(0, Math.floor(playerHealth));
+  
+  // Dessiner chaque cœur
+  for (let i = 0; i < GAME.maxHearts; i++) {
+    // Calculer l'état de ce cœur (0 = vide, 1 = demi, 2 = plein)
+    const heartIndex = i * 2; // Index du premier demi-cœur de ce cœur
+    let heartState = 0; // 0 = vide, 1 = demi, 2 = plein
+    
+    if (currentHalfHearts > heartIndex + 1) {
+      heartState = 2; // Plein
+    } else if (currentHalfHearts > heartIndex) {
+      heartState = 1; // Demi
+    } else {
+      heartState = 0; // Vide
+    }
+    
+    // Sélectionner l'image appropriée
+    let heartImg = null;
+    if (heartState === 2) {
+      heartImg = heartImages[0]; // 100%
+    } else if (heartState === 1) {
+      heartImg = heartImages[1]; // 50%
+    } else {
+      heartImg = heartImages[2]; // 0%
+    }
+    
+    // Dessiner le cœur en préservant le ratio d'aspect
+    if (heartImg) {
+      // Obtenir les dimensions originales du SVG
+      const originalW = heartImg.width || 561; // Dimensions par défaut du SVG
+      const originalH = heartImg.height || 516;
+      const aspectRatio = originalW / originalH;
+      
+      // Calculer la largeur en préservant le ratio
+      const heartWidth = heartHeight * aspectRatio;
+      
+      // Position X en tenant compte de la largeur réelle
+      const heartX = startX + i * (heartWidth + heartSpacing);
+      const heartY = startY;
+      
+      imageMode(CORNER);
+      image(heartImg, heartX, heartY, heartWidth, heartHeight);
+    }
+  }
 }
 
 function drawEndScreen() {

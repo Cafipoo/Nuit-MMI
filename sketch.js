@@ -15,6 +15,7 @@
 */
 
 let characterFrames = [];
+let heartImages = [];
 
 function preload() {
   // Character variants (SVG)
@@ -22,6 +23,13 @@ function preload() {
     loadImage("assets/character/POS1.svg"),
     loadImage("assets/character/POS2.svg"),
     loadImage("assets/character/POS3.svg"),
+  ];
+  
+  // Heart health assets (SVG)
+  heartImages = [
+    loadImage("assets/health/Coeur100.svg"),
+    loadImage("assets/health/Coeur50.svg"),
+    loadImage("assets/health/Coeur0.svg"),
   ];
 }
 

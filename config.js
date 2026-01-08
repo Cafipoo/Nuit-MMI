@@ -10,4 +10,6 @@ const GAME = {
   jumpSpeed: 11.5,
   levelLength: 5200, // world X where the finish flag lives
   fallY: 1200, // lose if player falls below this
+  maxHearts: 3, // Nombre maximum de cœurs (chaque cœur = 2 demi-cœurs)
+  damagePerHit: 0.5, // Dégâts par hit (en demi-cœurs)
 };

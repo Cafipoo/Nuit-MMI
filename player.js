@@ -48,6 +48,16 @@ function createPlayer() {
       push();
       imageMode(CENTER);
 
+      // Effet de clignotement si invincible (style Mario)
+      if (typeof isInvincible !== "undefined" && isInvincible) {
+        const blinkSpeed = 8; // Vitesse du clignotement (frames)
+        const shouldShow = Math.floor(frameCount / blinkSpeed) % 2 === 0;
+        if (!shouldShow) {
+          pop();
+          return; // Ne pas dessiner cette frame (effet de clignotement)
+        }
+      }
+
       // Flip horizontally based on facing direction
       if (playerDirection === -1) scale(-1, 1);
 
@@ -70,6 +80,15 @@ function createPlayer() {
       return;
     }
 
+    // Fallet de clignotement si invincible (style Mario)
+    if (typeof isInvincible !== "undefined" && isInvincible) {
+      const blinkSpeed = 8; // Vitesse du clignotement (frames)
+      const shouldShow = Math.floor(frameCount / blinkSpeed) % 2 === 0;
+      if (!shouldShow) {
+        return; // Ne pas dessiner cette frame (effet de clignotement)
+      }
+    }
+    
     // Fallback (if images didn't load)
     noStroke();
     fill("#111827");
