@@ -23,10 +23,14 @@ function createPlayer() {
   // Custom draw for a friendly minimalist character
   player.draw = () => {
     const frames = typeof characterFrames !== "undefined" ? characterFrames : [];
+    const megaActive = typeof activePowerUp !== "undefined" && activePowerUp === "mega";
+    const visualScale = megaActive ? 1.25 : 1.0;
 
     // If SVG frames are loaded, draw them and animate while moving
     if (frames && frames.length >= 3 && frames[0]) {
-      const isMoving = Math.abs(player.vel.x) > 0.35 && gameState === "play";
+      const isActiveGame =
+        typeof gameState !== "undefined" && (gameState === "play" || gameState === "boss");
+      const isMoving = Math.abs(player.vel.x) > 0.35 && isActiveGame;
 
       if (isMoving) {
         // Swap every ~6 frames for a run-cycle feel
@@ -51,8 +55,8 @@ function createPlayer() {
       push();
       imageMode(CENTER);
 
-      // Effet de clignotement si invincible (style Mario)
-      if (typeof isInvincible !== "undefined" && isInvincible) {
+      // Effet de clignotement si invincible (style Mario) (mais pas pendant le power-up mega)
+      if (!megaActive && typeof isInvincible !== "undefined" && isInvincible) {
         const blinkSpeed = 8; // Vitesse du clignotement (frames)
         const shouldShow = Math.floor(frameCount / blinkSpeed) % 2 === 0;
         if (!shouldShow) {
@@ -74,7 +78,7 @@ function createPlayer() {
       const aspectRatio = originalW / originalH;
 
       // Taille cible en hauteur (basée sur la hauteur du sprite)
-      const targetH = player.h * 2.6;
+      const targetH = player.h * 2.6 * visualScale;
       const targetW = targetH * aspectRatio; // Préserver le ratio
 
       // Centrer verticalement avec un léger offset vers le haut
@@ -83,8 +87,8 @@ function createPlayer() {
       return;
     }
 
-    // Fallet de clignotement si invincible (style Mario)
-    if (typeof isInvincible !== "undefined" && isInvincible) {
+    // Fallet de clignotement si invincible (style Mario) (mais pas pendant le power-up mega)
+    if (!megaActive && typeof isInvincible !== "undefined" && isInvincible) {
       const blinkSpeed = 8; // Vitesse du clignotement (frames)
       const shouldShow = Math.floor(frameCount / blinkSpeed) % 2 === 0;
       if (!shouldShow) {
@@ -113,15 +117,18 @@ function isGrounded() {
 function updatePlayerMovement(moveAxis, grounded) {
   // Horizontal movement (snappy on ground, slightly softer in air)
   const control = grounded ? 1 : GAME.airControl;
-  // Multiplier la vitesse par 1.5 si le joueur a le power-up
-  const speedMultiplier = (typeof hasSpeedPowerUp !== "undefined" && hasSpeedPowerUp) ? 1.5 : 1;
+  // Multiplier la vitesse si power-up speed actif
+  const speedMultiplier =
+    (typeof activePowerUp !== "undefined" && activePowerUp === "speed") ? 1.5 : 1;
   player.vel.x = lerp(player.vel.x, moveAxis * GAME.runSpeed * speedMultiplier, 0.22 * control);
 }
 
 function updatePlayerJump(jumpPressed, grounded) {
   // Jump (body trigger only)
   if (jumpPressed && grounded) {
-    player.vel.y = -GAME.jumpSpeed;
+    const jumpMultiplier =
+      (typeof activePowerUp !== "undefined" && activePowerUp === "jump") ? 1.65 : 1;
+    player.vel.y = -GAME.jumpSpeed * jumpMultiplier;
   }
 }
 

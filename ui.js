@@ -22,6 +22,7 @@ function drawHUD() {
   // Barre de durée du power-up - à droite sous le score
   drawPowerUpBar();
 
+
   textAlign(CENTER, CENTER);
   text("Move: gesture '67' (webcam) | Turn: F | Jump: G (Makey Makey) | Fullscreen: P", width / 2, 26);
 
@@ -166,6 +167,7 @@ function drawHUD() {
   camera.on();
 }
 
+
 function drawHealthBar() {
   if (typeof heartImages === "undefined" || !heartImages || heartImages.length < 3) {
     return; // Images pas encore chargées
@@ -225,8 +227,8 @@ function drawHealthBar() {
 }
 
 function drawPowerUpBar() {
-  // Afficher la barre de durée du power-up seulement si le joueur a un power-up actif
-  if (typeof hasSpeedPowerUp === "undefined" || !hasSpeedPowerUp) {
+  // Afficher la barre de durée du power-up seulement si un power-up est actif
+  if (typeof activePowerUp === "undefined" || !activePowerUp) {
     return;
   }
   
@@ -238,8 +240,16 @@ function drawPowerUpBar() {
   // Calculer le temps restant
   const now = millis();
   const elapsed = now - (typeof powerUpStartTime !== "undefined" ? powerUpStartTime : 0);
-  const remaining = Math.max(0, (typeof powerUpDuration !== "undefined" ? powerUpDuration : 10000) - elapsed);
-  const progress = remaining / (typeof powerUpDuration !== "undefined" ? powerUpDuration : 10000);
+  const duration = typeof powerUpDuration !== "undefined" && powerUpDuration > 0 ? powerUpDuration : 10000;
+  const remaining = Math.max(0, duration - elapsed);
+  const progress = remaining / duration;
+
+  // Style selon le type
+  const type = activePowerUp;
+  const def = (typeof POWER_UPS !== "undefined" && POWER_UPS[type]) ? POWER_UPS[type] : null;
+  const label = def?.label || "POWER UP";
+  const colorArr = def?.color || [239, 68, 68];
+  const assetKey = def?.assetKey || "framboise";
   
   // Fond de la barre (gris foncé)
   push();
@@ -248,8 +258,8 @@ function drawPowerUpBar() {
   fill(15, 23, 42, 200);
   rect(startX, startY, barWidth, barHeight, 4);
   
-  // Barre de progression (rouge pour la framboise)
-  fill(239, 68, 68); // Rouge framboise
+  // Barre de progression (couleur selon le power-up)
+  fill(colorArr[0], colorArr[1], colorArr[2]);
   rect(startX, startY, barWidth * progress, barHeight, 4);
   
   // Bordure
@@ -258,20 +268,21 @@ function drawPowerUpBar() {
   noFill();
   rect(startX, startY, barWidth, barHeight, 4);
   
-  // Texte "SPEED UP"
+  // Texte (selon le power-up)
   fill(255, 255, 255);
   textSize(12);
   textAlign(CENTER, CENTER);
-  text("SPEED UP", startX + barWidth / 2, startY + barHeight / 2);
+  text(label, startX + barWidth / 2, startY + barHeight / 2);
   
-  // Afficher l'icône framboise si disponible
-  if (typeof mapAssets !== "undefined" && mapAssets.framboise && mapAssets.framboise.width) {
+  // Afficher l'icône du power-up si disponible
+  const iconImg = typeof mapAssets !== "undefined" ? mapAssets[assetKey] : null;
+  if (iconImg && iconImg.width) {
     push();
     imageMode(CORNER);
     const iconSize = barHeight - 4;
-    const aspectRatio = (mapAssets.framboise.width || 30) / (mapAssets.framboise.height || 30);
+    const aspectRatio = (iconImg.width || 30) / (iconImg.height || 30);
     const iconWidth = iconSize * aspectRatio;
-    image(mapAssets.framboise, startX + 4, startY + 2, iconWidth, iconSize);
+    image(iconImg, startX + 4, startY + 2, iconWidth, iconSize);
     pop();
   }
   

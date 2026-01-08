@@ -19,8 +19,15 @@ let heartImages = [];
 let winCharacter = null;
 let mapAssets = {
   sun: null,
+  ground: null,
+  platform: null,
   cube: null,
-  framboise: null
+  framboise: null,
+  fraise: null,
+  myrtilles: null,
+  cactus: null,
+  monstre: null,
+  trees: null
 };
 
 function preload() {
@@ -40,9 +47,20 @@ function preload() {
   
   // Map decorative assets (SVG)
   mapAssets.sun = loadImage("assets/map/sun.svg");
-  mapAssets.platform = loadImage("assets/map/sol.svg");
+  // Separate ground tile vs floating platform
+  mapAssets.ground = loadImage("assets/map/sol.svg");
+  mapAssets.platform = loadImage("assets/map/plateforme.svg");
   mapAssets.cube = loadImage("assets/map/cube.svg");
   mapAssets.framboise = loadImage("assets/map/framboise.svg");
+  mapAssets.fraise = loadImage("assets/map/fraise.svg");
+  mapAssets.myrtilles = loadImage("assets/map/myrtilles.svg");
+  mapAssets.cactus = loadImage("assets/map/cactus.svg");
+  mapAssets.monstre = loadImage("assets/map/monstre.svg");
+  mapAssets.trees = [
+    loadImage("assets/map/arbre1.svg"),
+    loadImage("assets/map/arbre2.svg"),
+    loadImage("assets/map/arbre3.svg"),
+  ];
   
   // Win character for victory screen
   winCharacter = loadImage("assets/character/win.svg");
@@ -64,6 +82,11 @@ function setup() {
   // Build level and create player
   buildLevel();
   createPlayer();
+
+  // Procedural map generation (platforms + cubes + decor trees)
+  if (typeof initMapGeneration === "function") {
+    initMapGeneration();
+  }
 
   // Camera: we'll follow the player horizontally (simple and effective)
   camera.zoom = 1;
@@ -99,7 +122,8 @@ function draw() {
   // Parallax-ish simple scenery (drawn in screen space, not world space)
   drawBackdrop();
 
-  if (gameState !== "play") {
+  // Only block gameplay on lose screen (boss remains playable)
+  if (gameState === "lose") {
     drawEndScreen();
     return;
   }

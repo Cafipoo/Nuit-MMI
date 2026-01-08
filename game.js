@@ -1,7 +1,12 @@
 // ------------ Game logic and state management ------------
 
-let score = 0;
-let gameState = "play"; // "play" | "win" | "lose"
+// Debug helper: set to 50 if you want to test the teleport quickly
+const DEBUG_START_SCORE = 50;
+
+let score = DEBUG_START_SCORE;
+let gameState = "play"; // "play" | "boss" | "win" | "lose"
+let hasTeleportedToFinish = false;
+const SCORE_TELEPORT_THRESHOLD = 50;
 let playerHealth = GAME.maxHearts * 2; // Vie en demi-cœurs (3 cœurs = 6 demi-cœurs)
 let lastDamageTime = 0; // Pour éviter les dégâts multiples trop rapides
 const damageCooldown = 1000; // 1 seconde entre chaque dégât
@@ -9,10 +14,26 @@ let isInvincible = false; // État d'invincibilité après avoir pris des dégâ
 let invincibilityStartTime = 0; // Moment où l'invincibilité a commencé
 const invincibilityDuration = 2000; // Durée de l'invincibilité en millisecondes (2 secondes)
 
-// Power-up system
-let hasSpeedPowerUp = false;
+// Power-up system (typed)
+const POWER_UPS = {
+  speed: { duration: 10000, label: "SPEED UP", color: [239, 68, 68], assetKey: "framboise" },
+  mega: { duration: 9000, label: "INVINCIBLE", color: [250, 204, 21], assetKey: "fraise" },
+  jump: { duration: 10000, label: "JUMP UP", color: [59, 130, 246], assetKey: "myrtilles" },
+};
+
+let activePowerUp = null; // "speed" | "mega" | "jump" | null
 let powerUpStartTime = 0;
-const powerUpDuration = 10000; // 10 secondes
+let powerUpDuration = 0;
+
+// Boss arena state
+let bossArena = null; // { active, leftX, rightX, centerX }
+let boss = null;
+let arenaWalls = null;
+
+function isPlayerInvincible() {
+  return isInvincible || activePowerUp === "mega";
+}
+
 
 function updateGameLogic() {
   // Mettre à jour l'invincibilité
@@ -23,27 +44,55 @@ function updateGameLogic() {
   
   // Mettre à jour le mouvement des power-ups (roulement sur le sol)
   updatePowerUpsMovement();
+
+  // Génération procédurale (plateformes + cubes + arbres décor)
+  if (gameState === "play" && typeof updateMapGeneration === "function") {
+    updateMapGeneration();
+  }
+
+  // Téléportation au drapeau à 50 points (une seule fois)
+  checkScoreTeleport();
+
+  // Boss arena: clamp + collisions
+  if (gameState === "boss") {
+    updateBossArena();
+  }
   
   // --- Collisions / interactions ---
   player.collide(ground);
-  player.collide(platforms);
-  player.collide(cubes); // Collision avec les cubes
+  if (gameState === "play") {
+    player.collide(platforms);
+    player.collide(cubes); // Collision avec les cubes
+  }
+  if (typeof arenaWalls !== "undefined" && arenaWalls) {
+    player.collide(arenaWalls);
+  }
+  if (typeof boss !== "undefined" && boss) {
+    player.collide(boss);
+  }
 
-  player.overlap(coins, collectCoin);
+
+  if (gameState === "play") {
+    player.overlap(coins, collectCoin);
+  }
   // Ne pas détecter les spikes si invincible
   if (!isInvincible) {
     player.overlap(spikes, hitSpike);
   }
-  player.overlap(finishFlag, reachFinish);
+  if (gameState === "play") {
+    player.overlap(finishFlag, reachFinish);
+  }
   
   // Détecter les collisions avec les cubes (quand le joueur saute en dessous)
-  checkCubeHits();
+  if (gameState === "play") {
+    checkCubeHits();
+  }
   
   // Détecter la collecte des power-ups
   player.overlap(powerUps, collectPowerUp);
 
   // Lose if you fall off the world (retire de la vie)
-  if (player.y > GAME.fallY && gameState === "play" && !isInvincible) {
+  if (player.y > GAME.fallY && gameState === "play" && !isPlayerInvincible()) {
     const now = millis();
     if (now - lastDamageTime >= damageCooldown) {
       lastDamageTime = now;
@@ -71,14 +120,36 @@ function updateGameLogic() {
   }
 }
 
+
 function collectCoin(p, c) {
   score += 10;
   c.remove();
 }
 
+function checkScoreTeleport() {
+  if (gameState !== "play") return;
+  if (hasTeleportedToFinish) return;
+  if (score < SCORE_TELEPORT_THRESHOLD) return;
+  if (typeof finishFlag === "undefined" || !finishFlag) return;
+  if (typeof player === "undefined" || !player) return;
+
+  hasTeleportedToFinish = true;
+
+  // Se placer juste avant le drapeau (pour éviter de gagner instantanément)
+  const targetX = finishFlag.x - 140;
+  const groundTop = height - 100; // cohérent avec createPlayer() / fall reset
+  const targetY = groundTop - 22;
+
+  player.x = targetX;
+  player.y = targetY;
+  player.vel.x = 0;
+  player.vel.y = 0;
+  player.sleeping = false;
+}
+
 function hitSpike() {
   // Ne pas prendre de dégâts si invincible
-  if (isInvincible) {
+  if (isPlayerInvincible()) {
     return;
   }
   
@@ -132,7 +203,77 @@ function applyKnockback() {
 }
 
 function reachFinish() {
-  gameState = "win";
+  // Enter boss fight arena instead of immediate win
+  if (gameState !== "play") return;
+  gameState = "boss";
+  initBossArena();
+}
+
+function initBossArena() {
+  // Stop showing/using the procedural level beyond the flag
+  platforms?.removeAll();
+  cubes?.removeAll();
+  coins?.removeAll();
+  spikes?.removeAll();
+  decorTrees?.removeAll();
+  powerUps?.removeAll();
+
+  // Remove the flag so it can't be triggered again
+  finishFlag?.remove();
+
+  // Create arena bounds right after the old flag position.
+  // Arena width matches the screen width so the screen borders are the limits.
+  const baseX = (typeof finishFlag !== "undefined" && finishFlag) ? finishFlag.x : player.x;
+  const leftX = baseX + 220;
+  const rightX = leftX + width;
+  const centerX = leftX + width / 2;
+
+  bossArena = { active: true, leftX, rightX, centerX };
+
+  // No physical walls: we use screen edges as invisible limits via clamping.
+  arenaWalls?.removeAll?.();
+  arenaWalls = null;
+
+  // Teleport player to left side of arena
+  const groundTop = height - 100;
+  player.x = leftX + 140;
+  player.y = groundTop - 22;
+  player.vel.x = 0;
+  player.vel.y = 0;
+  player.sleeping = false;
+
+  // Spawn boss on the right side (simple white circle)
+  boss?.remove?.();
+  boss = new Sprite(rightX - 160, groundTop - 28, 70, 70, "static");
+  boss.rotationLock = true;
+  boss.draw = () => {
+    const img = typeof mapAssets !== "undefined" ? mapAssets.monstre : null;
+    if (img && img.width) {
+      push();
+      imageMode(CENTER);
+      const aspectRatio = (img.width || 1) / (img.height || 1);
+      const targetH = boss.h * 2.2;
+      const targetW = targetH * aspectRatio;
+      image(img, 0, -6, targetW, targetH);
+      pop();
+      return;
+    }
+
+    // Fallback if SVG not loaded
+    noStroke();
+    fill(255);
+    circle(0, 0, 68);
+  };
+}
+
+function updateBossArena() {
+  if (!bossArena?.active) return;
+
+  // Keep player inside the visible screen bounds (so borders are the limits)
+  const pad = 24;
+  const leftBound = camera.x - width / 2 + pad;
+  const rightBound = camera.x + width / 2 - pad;
+  player.x = constrain(player.x, leftBound, rightBound);
 }
 
 function setLose(reason) {
@@ -163,10 +304,15 @@ function checkCubeHits() {
 }
 
 function spawnPowerUp(x, y) {
-  // Créer une framboise qui sort du cube
+  // Créer un power-up qui sort du cube (framboise/fraise/myrtilles)
   if (typeof powerUps === "undefined" || !powerUps) return;
   
   const powerUp = new powerUps.Sprite(x, y, 30, 30);
+
+  // Choisir le type (pondéré)
+  // - speed un peu plus fréquent
+  const r = random();
+  powerUp._type = r < 0.5 ? "speed" : r < 0.75 ? "jump" : "mega";
   
   // Lancer la framboise vers le haut avec une vitesse horizontale aléatoire (comme dans Mario)
   powerUp.vel.y = -5; // Lancer vers le haut
@@ -190,22 +336,28 @@ function spawnPowerUp(x, y) {
   powerUp.gravity = 1;
   
   powerUp.draw = () => {
-    if (typeof mapAssets !== "undefined" && mapAssets.framboise && mapAssets.framboise.width) {
+    const type = powerUp._type || "speed";
+    const def = POWER_UPS[type] || POWER_UPS.speed;
+    const key = def.assetKey;
+    const img = typeof mapAssets !== "undefined" ? mapAssets[key] : null;
+
+    if (img && img.width) {
       push();
       imageMode(CENTER);
       // Utiliser le ratio d'aspect réel du SVG
-      const aspectRatio = (mapAssets.framboise.width || 30) / (mapAssets.framboise.height || 30);
+      const aspectRatio = (img.width || 30) / (img.height || 30);
       const powerUpSize = powerUp.w;
       const powerUpWidth = powerUpSize;
       const powerUpHeight = powerUpSize / aspectRatio;
-      image(mapAssets.framboise, 0, 0, powerUpWidth, powerUpHeight);
+      image(img, 0, 0, powerUpWidth, powerUpHeight);
       pop();
     } else {
       // Fallback si l'image n'est pas chargée
       noStroke();
-      fill("#ef4444");
+      const [cr, cg, cb] = (POWER_UPS[powerUp._type] || POWER_UPS.speed).color;
+      fill(cr, cg, cb);
       circle(0, 0, powerUp.w);
-      fill("#dc2626");
+      fill(0, 0, 0, 60);
       circle(0, 0, powerUp.w * 0.7);
     }
   };
@@ -229,19 +381,31 @@ function spawnPowerUp(x, y) {
 }
 
 function collectPowerUp(p, powerUp) {
-  // Activer le power-up de vitesse
-  hasSpeedPowerUp = true;
-  powerUpStartTime = millis();
+  // Activer le power-up
+  const type = powerUp?._type || "speed";
+  activatePowerUp(type);
   powerUp.remove();
 }
 
 function updatePowerUp() {
-  if (hasSpeedPowerUp) {
-    const now = millis();
-    if (now - powerUpStartTime >= powerUpDuration) {
-      hasSpeedPowerUp = false;
-    }
+  if (!activePowerUp) return;
+  const now = millis();
+  if (now - powerUpStartTime >= powerUpDuration) {
+    deactivatePowerUp();
   }
+}
+
+function activatePowerUp(type) {
+  const def = POWER_UPS[type] || POWER_UPS.speed;
+  activePowerUp = type;
+  powerUpStartTime = millis();
+  powerUpDuration = def.duration;
+}
+
+function deactivatePowerUp() {
+  activePowerUp = null;
+  powerUpStartTime = 0;
+  powerUpDuration = 0;
 }
 
 function updatePowerUpsMovement() {
@@ -255,8 +419,8 @@ function updatePowerUpsMovement() {
     const isGrounded = powerUp.colliding(ground) || powerUp.colliding(platforms);
     
     // Vérifier les collisions avec les obstacles pour rebondir
-    const hitCube = powerUp.colliding(cubes);
-    const hitSpike = powerUp.colliding(spikes);
+    const hitCube = (typeof cubes !== "undefined" && cubes) ? powerUp.colliding(cubes) : false;
+    const hitSpike = (typeof spikes !== "undefined" && spikes) ? powerUp.colliding(spikes) : false;
     
     if (hitCube || hitSpike) {
       // Inverser la direction quand on touche un obstacle
@@ -279,13 +443,21 @@ function restartGame() {
   // This avoids subtle physics state bugs in a hackathon setting.
   score = 0;
   gameState = "play";
+  hasTeleportedToFinish = false;
   playerDirection = 1; // Reset direction
   playerHealth = GAME.maxHearts * 2; // Réinitialiser la vie
   lastDamageTime = 0; // Réinitialiser le cooldown
   isInvincible = false; // Réinitialiser l'invincibilité
   invincibilityStartTime = 0;
-  hasSpeedPowerUp = false; // Réinitialiser le power-up
+  activePowerUp = null;
   powerUpStartTime = 0;
+  powerUpDuration = 0;
+
+  bossArena = null;
+  boss?.remove?.();
+  boss = null;
+  arenaWalls?.removeAll?.();
+  arenaWalls = null;
 
   // Réafficher tous les sprites
   if (typeof allSprites !== "undefined") {
@@ -300,6 +472,7 @@ function restartGame() {
   spikes?.removeAll();
   coins?.removeAll();
   cubes?.removeAll();
+  decorTrees?.removeAll();
   powerUps?.removeAll();
 
   buildLevel();

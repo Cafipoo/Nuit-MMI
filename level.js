@@ -7,6 +7,32 @@ let coins;
 let finishFlag;
 let cubes;
 let powerUps;
+let decorTrees;
+
+// Cached layout values (set in buildLevel)
+let GROUND_TOP_Y = 0;
+
+// Procedural generation state
+let GEN_NEXT_X = 0;
+let GEN_SEED = 0;
+const GEN = {
+  viewAhead: 1200, // how far ahead of the player we generate
+  cleanupBehind: 1600, // how far behind we remove generated decor/platforms/cubes
+  platformStep: 420, // equal spacing between platforms
+
+  // Fixed heights (same Y for all)
+  platformYRef: 250, // design-space Y (scaled with sy)
+  cubeYFactor: 0.65, // screen-space factor (height * factor)
+
+  // Difficulty: random vertical variation (±px)
+  // - platforms: keep variation for difficulty
+  // - cubes: fixed height as requested
+  platformYJitter: 100,
+  cubeYJitter: 0,
+
+  platformW: 200,
+  platformH: 28,
+};
 
 function initLevelGroups() {
   // Groups
@@ -29,6 +55,11 @@ function initLevelGroups() {
   powerUps = new Group();
   powerUps.collider = "dynamic"; // Les power-ups peuvent bouger
   powerUps.color = color("#ef4444"); // red
+
+  // Decorative trees (no collisions, purely visual)
+  decorTrees = new Group();
+  decorTrees.collider = "none";
+
 }
 
 function buildLevel() {
@@ -41,14 +72,15 @@ function buildLevel() {
   const groundHeight = 100; // Hauteur du sol augmentée (au lieu de 70)
   const groundY = height - groundHeight / 2; // Centrer le sol plus haut
   ground = new Sprite(groundLength / 2, groundY, groundLength, groundHeight, "static");
+  GROUND_TOP_Y = groundY - groundHeight / 2;
   ground.draw = () => {
-    if (typeof mapAssets !== "undefined" && mapAssets.platform && mapAssets.platform.width) {
-      // Dessiner le SVG plateforme en répétition
+    if (typeof mapAssets !== "undefined" && mapAssets.ground && mapAssets.ground.width) {
+      // Dessiner le SVG sol en répétition
       push();
       imageMode(CORNER);
       const platformHeight = groundHeight;
       // Utiliser le ratio d'aspect réel du SVG pour éviter la déformation
-      const aspectRatio = (mapAssets.platform.width || 200) / (mapAssets.platform.height || 100);
+      const aspectRatio = (mapAssets.ground.width || 200) / (mapAssets.ground.height || 100);
       const platformWidth = platformHeight * aspectRatio; // Préserver le ratio d'aspect
       const overlap = 2; // Chevauchement de 5px pour éviter les espaces
       const numPlatforms = Math.ceil(groundLength / (platformWidth - overlap)) + 3; // +3 pour la marge
@@ -62,7 +94,7 @@ function buildLevel() {
         const x = startX + i * (platformWidth - overlap); // Position avec chevauchement
         const y = -platformHeight / 2;
         // Dessiner le bloc sans déformation (ratio préservé)
-        image(mapAssets.platform, x, y, platformWidth, platformHeight);
+        image(mapAssets.ground, x, y, platformWidth, platformHeight);
       }
       pop();
     } else {
@@ -72,24 +104,6 @@ function buildLevel() {
       rect(-groundLength / 2, -groundHeight / 2, groundLength, groundHeight);
     }
   };
-
-  // A few floating platforms (simple handcrafted "beats")
-  // Toutes les plateformes ont maintenant la même taille
-  // Plateformes plus hautes (multiplier par un facteur plus petit pour les monter)
-  const platformWidth = 200; // Largeur fixe pour toutes les plateformes
-  const platformHeight = 28; // Hauteur fixe pour toutes les plateformes
-  addPlatform(450, 350 * sy, platformWidth, platformHeight); // Plus haut (420 -> 350)
-  addPlatform(820, 290 * sy, platformWidth, platformHeight); // Plus haut (360 -> 290)
-  addPlatform(1180, 230 * sy, platformWidth, platformHeight); // Plus haut (300 -> 230)
-  addPlatform(1550, 310 * sy, platformWidth, platformHeight); // Plus haut (380 -> 310)
-  addPlatform(1900, 250 * sy, platformWidth, platformHeight); // Plus haut (320 -> 250)
-  addPlatform(2250, 190 * sy, platformWidth, platformHeight); // Plus haut (260 -> 190)
-  addPlatform(2650, 270 * sy, platformWidth, platformHeight); // Plus haut (340 -> 270)
-  addPlatform(3100, 220 * sy, platformWidth, platformHeight); // Plus haut (290 -> 220)
-  addPlatform(3520, 290 * sy, platformWidth, platformHeight); // Plus haut (360 -> 290)
-  addPlatform(3970, 230 * sy, platformWidth, platformHeight); // Plus haut (300 -> 230)
-  addPlatform(4400, 260 * sy, platformWidth, platformHeight); // Plus haut (330 -> 260)
-  addPlatform(4800, 210 * sy, platformWidth, platformHeight); // Plus haut (280 -> 210)
 
   // Spikes (obstacles) - ajustés pour le sol plus haut
   // Keep them mostly on ground so the rule "avoid obstacles" is clear
@@ -102,35 +116,6 @@ function buildLevel() {
   addSpike(3365, spikeY, 48, 38);
   addSpike(3700, spikeY, 48, 38);
   addSpike(4480, spikeY, 48, 38);
-
-  // Coins (collectibles) - place near platforms to encourage jumping/moving
-  // Ajustés pour correspondre aux nouvelles positions des plateformes
-  addCoin(450, 300 * sy); // Ajusté pour la plateforme à 350
-  addCoin(820, 240 * sy); // Ajusté pour la plateforme à 290
-  addCoin(1180, 180 * sy); // Ajusté pour la plateforme à 230
-  addCoin(1550, 260 * sy); // Ajusté pour la plateforme à 310
-  addCoin(1900, 200 * sy); // Ajusté pour la plateforme à 250
-  addCoin(2250, 140 * sy); // Ajusté pour la plateforme à 190
-  addCoin(2650, 220 * sy); // Ajusté pour la plateforme à 270
-  addCoin(3100, 170 * sy); // Ajusté pour la plateforme à 220
-  addCoin(3520, 240 * sy); // Ajusté pour la plateforme à 290
-  addCoin(3970, 180 * sy); // Ajusté pour la plateforme à 230
-  addCoin(4400, 210 * sy); // Ajusté pour la plateforme à 260
-  addCoin(4800, 160 * sy); // Ajusté pour la plateforme à 210
-
-  // Cubes (question blocks) - place them lower to avoid platforms
-  // Positionner les cubes plus bas, environ aux 2/3 de la hauteur pour éviter les plateformes
-  const cubeY = height * 0.65; // Plus bas que la mi-hauteur pour éviter les plateformes
-  addCube(600, cubeY);
-  addCube(1000, cubeY);
-  addCube(1400, cubeY);
-  addCube(1800, cubeY);
-  addCube(2400, cubeY);
-  addCube(2800, cubeY);
-  addCube(3200, cubeY);
-  addCube(3600, cubeY);
-  addCube(4100, cubeY);
-  addCube(4600, cubeY);
 
   // Finish flag - ajusté pour le sol plus haut
   finishFlag = new Sprite(GAME.levelLength - 140, groundY - 70, 26, 140, "static");
@@ -153,6 +138,148 @@ function buildLevel() {
       -finishFlag.h * 0.18
     );
   };
+}
+
+// ------------ Procedural generation (platforms + cubes + decor trees) ------------
+
+function initMapGeneration() {
+  // New seed each run for "random" layouts
+  GEN_SEED = Math.floor(Math.random() * 1_000_000_000);
+  randomSeed(GEN_SEED);
+
+  // Clear any previously generated elements (safe even if already cleared)
+  platforms?.removeAll();
+  cubes?.removeAll();
+  decorTrees?.removeAll();
+
+  // Start a bit ahead of the player
+  const startX = (typeof player !== "undefined" && player) ? player.x + 300 : 300;
+  GEN_NEXT_X = Math.max(300, startX);
+
+  // Generate an initial buffer so it's visible immediately
+  updateMapGeneration(true);
+}
+
+function updateMapGeneration(force = false) {
+  if (typeof player === "undefined" || !player) return;
+  if (typeof gameState !== "undefined" && gameState === "boss") return;
+
+  // Fixed heights (+ optional jitter)
+  const sy = height / GAME.designH;
+  const basePlatformY = GEN.platformYRef * sy;
+  const baseCubeY = height * GEN.cubeYFactor;
+
+  // Clamp so nothing spawns inside the ground or off-screen
+  const platformMinY = 90;
+  const platformMaxY = Math.max(90, GROUND_TOP_Y - 170);
+  const cubeMinY = 70;
+  const cubeMaxY = Math.max(70, GROUND_TOP_Y - 120);
+
+  // Do not generate anything past the finish flag
+  const stopX =
+    typeof finishFlag !== "undefined" && finishFlag ? finishFlag.x - 220 : Infinity;
+  const targetX = Math.min(player.x + GEN.viewAhead, stopX);
+  if (!force && GEN_NEXT_X > targetX) {
+    cleanupGenerated();
+    return;
+  }
+
+  while (GEN_NEXT_X <= targetX) {
+    const step = GEN.platformStep;
+
+    // Always spawn a platform at equal spacing
+    const platformY = constrain(
+      basePlatformY + random(-GEN.platformYJitter, GEN.platformYJitter),
+      platformMinY,
+      platformMaxY
+    );
+    addPlatform(GEN_NEXT_X, platformY, GEN.platformW, GEN.platformH);
+
+    // Always spawn a coin above each platform
+    addCoin(GEN_NEXT_X, platformY - 60);
+
+    // Spawn cubes between platforms (random), but at an equal/fixed height
+    if (random() < 0.55) {
+      const cubeX = GEN_NEXT_X + step * random(0.35, 0.75);
+      const cubeY = constrain(
+        baseCubeY + random(-GEN.cubeYJitter, GEN.cubeYJitter),
+        cubeMinY,
+        cubeMaxY
+      );
+      addCube(cubeX, cubeY);
+    }
+
+    // Decorative tree on/near the ground (random spacing and random type)
+    if (random() < 0.8) {
+      addDecorTree(GEN_NEXT_X + random(-120, 120));
+    }
+
+    GEN_NEXT_X += step;
+  }
+
+  cleanupGenerated();
+}
+
+function cleanupGenerated() {
+  if (typeof player === "undefined" || !player) return;
+  const minX = player.x - GEN.cleanupBehind;
+
+  for (const p of platforms) {
+    if (p && p.x < minX) p.remove();
+  }
+  for (const c of cubes) {
+    if (c && c.x < minX) c.remove();
+  }
+  for (const t of decorTrees) {
+    if (t && t.x < minX) t.remove();
+  }
+  for (const coin of coins) {
+    // Only cleanup coins that were generated procedurally (keep things bounded)
+    if (coin && coin.x < minX) coin.remove();
+  }
+}
+
+function addDecorTree(x) {
+  if (typeof decorTrees === "undefined" || !decorTrees) return null;
+
+  const treeH = 190;
+  const treeW = 150;
+  const y = GROUND_TOP_Y - treeH / 2 + 6; // sit slightly into the ground
+
+  const t = new decorTrees.Sprite(x, y, treeW, treeH);
+  t.collider = "none";
+  t.rotationLock = true;
+  t._treeIndex = Math.floor(random(0, 3));
+  t._parallax = random(0.78, 0.9); // slower than world to feel "in the back"
+
+  t.draw = () => {
+    const imgs = typeof mapAssets !== "undefined" ? mapAssets.trees : null;
+    const img = imgs && Array.isArray(imgs) ? imgs[t._treeIndex] : null;
+
+    if (img && img.width) {
+      push();
+      imageMode(CENTER);
+      // Visual "background" treatment
+      tint(255, 150);
+      const parallaxOffsetX =
+        typeof camera !== "undefined" ? -camera.x * (1 - t._parallax) : 0;
+      translate(parallaxOffsetX, 0);
+      const aspect = (img.width || 100) / (img.height || 100);
+      const h = treeH * 0.9; // slightly smaller to read as background
+      const w = h * aspect;
+      image(img, 0, 0, w, h);
+      pop();
+    } else {
+      // Visible fallback if image didn't load
+      noStroke();
+      fill(34, 197, 94, 140);
+      rect(0, 0, treeW * 0.55, treeH, 16);
+      fill(120, 53, 15, 160);
+      rect(0, treeH * 0.25, treeW * 0.18, treeH * 0.45, 8);
+    }
+  };
+
+  return t;
 }
 
 function addPlatform(x, y, w, h) {
@@ -188,13 +315,27 @@ function addPlatform(x, y, w, h) {
 function addSpike(x, y, w, h) {
   const s = new spikes.Sprite(x, y, w, h);
   s.draw = () => {
-    noStroke();
-    fill("#ef4444");
-    // Triangle spike
-    triangle(-s.w * 0.5, s.h * 0.5, s.w * 0.5, s.h * 0.5, 0, -s.h * 0.5);
-    // Small base
-    fill("#b91c1c");
-    rect(0, s.h * 0.35, s.w * 0.9, s.h * 0.3, 4);
+    const img = typeof mapAssets !== "undefined" ? mapAssets.cactus : null;
+    if (img && img.width) {
+      push();
+      imageMode(CENTER);
+      const aspect = (img.width || 1) / (img.height || 1);
+      // Un cactus est naturellement plus haut qu'un pic: on le dessine un peu plus grand
+      const drawH = s.h * 2.2;
+      const drawW = drawH * aspect;
+      // Légèrement relevé pour que la "base" semble posée sur le sol
+      image(img, 0, -s.h * 0.15, drawW, drawH);
+      pop();
+    } else {
+      // Fallback si l'image n'est pas chargée
+      noStroke();
+      fill("#ef4444");
+      // Triangle spike
+      triangle(-s.w * 0.5, s.h * 0.5, s.w * 0.5, s.h * 0.5, 0, -s.h * 0.5);
+      // Small base
+      fill("#b91c1c");
+      rect(0, s.h * 0.35, s.w * 0.9, s.h * 0.3, 4);
+    }
   };
   return s;
 }
