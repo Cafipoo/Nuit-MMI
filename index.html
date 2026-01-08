@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nuit MMI 2026 — Exergaming Platformer (p5.js + p5play)</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0b1020;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+    <!-- p5.js v1.11.4 (compatible with p5play) -->
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.4/lib/p5.js"></script>
+
+    <!-- p5play v3 requires Planck.js for physics -->
+    <script src="https://p5play.org/v3/planck.min.js"></script>
+    <script src="https://p5play.org/v3/p5play.js"></script>
+
+    <!-- ml5 (HandPose) -->
+    <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+  </head>
+  <body>
+    <!-- Load modules in order -->
+    <script src="config.js"></script>
+    <script src="level.js"></script>
+    <script src="player.js"></script>
+    <script src="handpose.js"></script>
+    <script src="input.js"></script>
+    <script src="camera.js"></script>
+    <script src="game.js"></script>
+    <script src="decor.js"></script>
+    <script src="ui.js"></script>
+    <script src="sketch.js"></script>
+  </body>
+</html>
+
