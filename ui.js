@@ -18,6 +18,9 @@ function drawHUD() {
   
   // Barre de vie (cœurs) - à gauche sous le score
   drawHealthBar();
+  
+  // Barre de durée du power-up - à droite sous le score
+  drawPowerUpBar();
 
   textAlign(CENTER, CENTER);
   text("Move: gesture '67' (webcam) | Turn: F | Jump: G (Makey Makey) | Fullscreen: P", width / 2, 26);
@@ -221,7 +224,145 @@ function drawHealthBar() {
   }
 }
 
+function drawPowerUpBar() {
+  // Afficher la barre de durée du power-up seulement si le joueur a un power-up actif
+  if (typeof hasSpeedPowerUp === "undefined" || !hasSpeedPowerUp) {
+    return;
+  }
+  
+  const barWidth = 200;
+  const barHeight = 20;
+  const startX = width - 16 - barWidth; // À droite, aligné avec le texte "Restart: R"
+  const startY = 50; // Sous le score, même hauteur que les cœurs
+  
+  // Calculer le temps restant
+  const now = millis();
+  const elapsed = now - (typeof powerUpStartTime !== "undefined" ? powerUpStartTime : 0);
+  const remaining = Math.max(0, (typeof powerUpDuration !== "undefined" ? powerUpDuration : 10000) - elapsed);
+  const progress = remaining / (typeof powerUpDuration !== "undefined" ? powerUpDuration : 10000);
+  
+  // Fond de la barre (gris foncé)
+  push();
+  rectMode(CORNER);
+  noStroke();
+  fill(15, 23, 42, 200);
+  rect(startX, startY, barWidth, barHeight, 4);
+  
+  // Barre de progression (rouge pour la framboise)
+  fill(239, 68, 68); // Rouge framboise
+  rect(startX, startY, barWidth * progress, barHeight, 4);
+  
+  // Bordure
+  stroke(255, 255, 255, 150);
+  strokeWeight(2);
+  noFill();
+  rect(startX, startY, barWidth, barHeight, 4);
+  
+  // Texte "SPEED UP"
+  fill(255, 255, 255);
+  textSize(12);
+  textAlign(CENTER, CENTER);
+  text("SPEED UP", startX + barWidth / 2, startY + barHeight / 2);
+  
+  // Afficher l'icône framboise si disponible
+  if (typeof mapAssets !== "undefined" && mapAssets.framboise && mapAssets.framboise.width) {
+    push();
+    imageMode(CORNER);
+    const iconSize = barHeight - 4;
+    const aspectRatio = (mapAssets.framboise.width || 30) / (mapAssets.framboise.height || 30);
+    const iconWidth = iconSize * aspectRatio;
+    image(mapAssets.framboise, startX + 4, startY + 2, iconWidth, iconSize);
+    pop();
+  }
+  
+  pop();
+}
+
 function drawEndScreen() {
+  if (gameState === "win") {
+    // Écran de victoire style Absolute Cinema
+    drawWinScreen();
+  } else {
+    // Écran de défaite (Game Over)
+    drawLoseScreen();
+  }
+}
+
+// Variables pour le bouton de rejouer
+let restartButton = {
+  x: 0,
+  y: 0,
+  w: 250,
+  h: 60
+};
+
+function drawWinScreen() {
+  // Fond noir style Absolute Cinema
+  camera.off();
+  push();
+  
+  // Dessiner le personnage Win au centre (légèrement décalé vers le haut) - taille réduite
+  if (typeof winCharacter !== "undefined" && winCharacter && winCharacter.width) {
+    push();
+    imageMode(CENTER);
+    // Taille réduite
+    const winSize = min(width * 0.4, height * 0.5);
+    const aspectRatio = winCharacter.width / winCharacter.height;
+    const winWidth = winSize;
+    const winHeight = winSize / aspectRatio;
+    
+    // Positionner le personnage au centre, légèrement vers le haut
+    image(winCharacter, width / 2, height / 2 - 100, winWidth, winHeight);
+    pop();
+  }
+  
+  // Texte "ABSOLUTE 67" en bas, style cinéma dramatique
+  push();
+  textAlign(CENTER);
+  textFont("system-ui");
+  
+  // Texte principal "ABSOLUTE 67" - style bold, blanc, grande taille
+  textSize(80);
+  textStyle(BOLD);
+  fill(255, 255, 255);
+  // Légère ombre pour l'effet dramatique
+  fill(0, 0, 0, 150);
+  text("ABSOLUTE 67", width / 2 + 3, height - 150 + 3);
+  fill(255, 255, 255);
+  text("ABSOLUTE 67", width / 2, height - 150);
+  pop();
+  
+  // Bouton pour rejouer
+  restartButton.x = width / 2;
+  restartButton.y = height - 60;
+  
+  // Détecter si la souris est sur le bouton
+  const mouseOverButton = 
+    mouseX >= restartButton.x - restartButton.w / 2 &&
+    mouseX <= restartButton.x + restartButton.w / 2 &&
+    mouseY >= restartButton.y - restartButton.h / 2 &&
+    mouseY <= restartButton.y + restartButton.h / 2;
+  
+  // Dessiner le bouton
+  push();
+  rectMode(CENTER);
+  noStroke();
+  fill(mouseOverButton ? 255 : 200, mouseOverButton ? 255 : 200, mouseOverButton ? 255 : 200);
+  rect(restartButton.x, restartButton.y, restartButton.w, restartButton.h, 8);
+  
+  // Texte du bouton
+  fill(0, 0, 0);
+  textSize(24);
+  textStyle(BOLD);
+  textAlign(CENTER, CENTER);
+  text("REJOUER", restartButton.x, restartButton.y);
+  pop();
+  
+  pop();
+  camera.on();
+}
+
+function drawLoseScreen() {
   // Keep the world visible, but overlay a centered card
   drawHUD();
   camera.off();
@@ -236,15 +377,10 @@ function drawEndScreen() {
   textAlign(CENTER, CENTER);
 
   textSize(34);
-  if (gameState === "win") text("You Win!", width / 2, height / 2 - 60);
-  else text("Game Over", width / 2, height / 2 - 60);
+  text("Game Over", width / 2, height / 2 - 60);
 
   textSize(18);
-  if (gameState === "lose") {
-    text(player._loseReason || "Try again!", width / 2, height / 2 - 22);
-  } else {
-    text("Nice run — keep moving!", width / 2, height / 2 - 22);
-  }
+  text(player._loseReason || "Try again!", width / 2, height / 2 - 22);
 
   textSize(16);
   text(`Final score: ${score}`, width / 2, height / 2 + 16);

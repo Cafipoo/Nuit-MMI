@@ -16,6 +16,12 @@
 
 let characterFrames = [];
 let heartImages = [];
+let winCharacter = null;
+let mapAssets = {
+  sun: null,
+  cube: null,
+  framboise: null
+};
 
 function preload() {
   // Character variants (SVG)
@@ -31,6 +37,16 @@ function preload() {
     loadImage("assets/health/Coeur50.svg"),
     loadImage("assets/health/Coeur0.svg"),
   ];
+  
+  // Map decorative assets (SVG)
+  mapAssets.sun = loadImage("assets/map/sun.svg");
+  mapAssets.platform = loadImage("assets/map/sol.svg");
+  mapAssets.cube = loadImage("assets/map/cube.svg");
+  mapAssets.framboise = loadImage("assets/map/framboise.svg");
+  
+  // Win character for victory screen
+  winCharacter = loadImage("assets/character/win.svg");
+  mapAssets.background = loadImage("assets/map/background.svg");
 }
 
 function setup() {
@@ -60,8 +76,25 @@ function setup() {
 }
 
 function draw() {
-  // Sky background
-  background("#60a5fa"); // blue
+  // Si on a gagné, cacher tous les sprites et afficher l'écran de victoire
+  if (gameState === "win") {
+    // Cacher tous les sprites du monde
+    if (typeof allSprites !== "undefined") {
+      allSprites.visible = false;
+    }
+    // Fond noir complet
+    background(0);
+    drawEndScreen();
+    return;
+  }
+
+  // Réafficher les sprites si on n'est pas en mode win
+  if (typeof allSprites !== "undefined") {
+    allSprites.visible = true;
+  }
+
+  // Fond jaune clair
+  background("#FFF5BE");
 
   // Parallax-ish simple scenery (drawn in screen space, not world space)
   drawBackdrop();
@@ -97,9 +130,37 @@ function keyPressed() {
 }
 
 function mousePressed() {
+  // Si on est sur l'écran de victoire, vérifier le clic sur le bouton
+  if (gameState === "win" && typeof restartButton !== "undefined") {
+    const mouseOverButton = 
+      mouseX >= restartButton.x - restartButton.w / 2 &&
+      mouseX <= restartButton.x + restartButton.w / 2 &&
+      mouseY >= restartButton.y - restartButton.h / 2 &&
+      mouseY <= restartButton.y + restartButton.h / 2;
+    
+    if (mouseOverButton && typeof restartGame === "function") {
+      restartGame();
+      return;
+    }
+  }
+  
   handleMouseInput();
 }
 
 function touchStarted() {
+  // Si on est sur l'écran de victoire, vérifier le touch sur le bouton
+  if (gameState === "win" && typeof restartButton !== "undefined") {
+    const touchOverButton = 
+      mouseX >= restartButton.x - restartButton.w / 2 &&
+      mouseX <= restartButton.x + restartButton.w / 2 &&
+      mouseY >= restartButton.y - restartButton.h / 2 &&
+      mouseY <= restartButton.y + restartButton.h / 2;
+    
+    if (touchOverButton && typeof restartGame === "function") {
+      restartGame();
+      return false;
+    }
+  }
+  
   return handleTouchInput();
 }

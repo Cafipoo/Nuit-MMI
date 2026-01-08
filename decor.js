@@ -1,30 +1,40 @@
 // ------------ Decorative elements and backdrop ------------
 
 function drawBackdrop() {
-  // Draw simple clouds and distant hills in screen space (cheap + clean)
+  // Fond simple avec soleil et background
   camera.off();
   push();
-  rectMode(CENTER);
-
-  // Distant hills
-  noStroke();
-  fill("#1d4ed8"); // darker blue
-  rect(width * 0.18, height * 0.86, width * 0.55, height * 0.3, 80);
-  rect(width * 0.68, height * 0.88, width * 0.7, height * 0.35, 90);
-
-  // Clouds
-  fill(255, 255, 255, 210);
-  cloud(140, 120, 1.0);
-  cloud(420, 90, 0.8);
-  cloud(760, 130, 1.15);
-
+  
+  // Background en bas, sans déformation, toute la largeur, mais pas jusqu'en haut
+  if (typeof mapAssets !== "undefined" && mapAssets.background && mapAssets.background.width) {
+    imageMode(CORNER);
+    const bgHeight = height * 0.6; // Prend 60% de la hauteur (ne va pas jusqu'en haut)
+    const bgWidth = width; // Toute la largeur de l'écran
+    const bgY = height - bgHeight; // Commence à partir du bas
+    
+    // Calculer la hauteur pour préserver le ratio d'aspect en utilisant toute la largeur
+    const aspectRatio = (mapAssets.background.width || 1000) / (mapAssets.background.height || 600);
+    const calculatedHeight = bgWidth / aspectRatio;
+    
+    // Utiliser la hauteur calculée pour préserver le ratio, mais limiter à bgHeight
+    const finalHeight = Math.min(calculatedHeight, bgHeight);
+    
+    // Centrer verticalement dans l'espace disponible
+    const finalY = height - finalHeight;
+    
+    image(mapAssets.background, 0, finalY, bgWidth, finalHeight);
+  }
+  
+  // Soleil statique en haut à gauche
+  if (typeof mapAssets !== "undefined" && mapAssets.sun) {
+    imageMode(CORNER);
+    const sunSize = 120;
+    const sunX = 30;
+    const sunY = 30;
+    image(mapAssets.sun, sunX, sunY, sunSize, sunSize);
+  }
+  
   pop();
   camera.on();
 }
 
-function cloud(x, y, s) {
-  circle(x, y, 52 * s);
-  circle(x + 30 * s, y + 10 * s, 44 * s);
-  circle(x - 34 * s, y + 12 * s, 40 * s);
-  rect(x, y + 18 * s, 120 * s, 28 * s, 18);
-}

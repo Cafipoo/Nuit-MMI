@@ -6,7 +6,10 @@ let playerPoseIndex = 1; // 0..2 (POS1, POS2, POS3) — default idle = POS2
 let playerPoseLastSwapFrame = 0;
 
 function createPlayer() {
-  player = new Sprite(120, height - 120, 34, 44);
+  // Positionner le joueur plus haut, sur le sol (sol maintenant à height - 50)
+  const groundTop = height - 100; // Le haut du sol (sol de 100px de haut, centré à height - 50)
+  const playerY = groundTop - 22; // Positionner le joueur sur le sol (hauteur du joueur / 2 = 22)
+  player = new Sprite(120, playerY, 34, 44);
   player.color = color("#1f2937"); // dark slate
   player.stroke = color("#111827");
   player.strokeWeight = 2;
@@ -110,7 +113,9 @@ function isGrounded() {
 function updatePlayerMovement(moveAxis, grounded) {
   // Horizontal movement (snappy on ground, slightly softer in air)
   const control = grounded ? 1 : GAME.airControl;
-  player.vel.x = lerp(player.vel.x, moveAxis * GAME.runSpeed, 0.22 * control);
+  // Multiplier la vitesse par 1.5 si le joueur a le power-up
+  const speedMultiplier = (typeof hasSpeedPowerUp !== "undefined" && hasSpeedPowerUp) ? 1.5 : 1;
+  player.vel.x = lerp(player.vel.x, moveAxis * GAME.runSpeed * speedMultiplier, 0.22 * control);
 }
 
 function updatePlayerJump(jumpPressed, grounded) {
