@@ -17,6 +17,8 @@
 let characterFrames = [];
 let heartImages = [];
 let winCharacter = null;
+let defeatCharacter = null;
+let losingTheme = null;
 let mapAssets = {
   sun: null,
   ground: null,
@@ -72,7 +74,12 @@ function preload() {
   
   // Win character for victory screen
   winCharacter = loadImage("assets/character/win.svg");
+  // Lose character for defeat screen
+  defeatCharacter = loadImage("assets/map/defeat.svg");
   mapAssets.background = loadImage("assets/map/background.svg");
+  
+  // Sound for defeat screen
+  losingTheme = loadSound("assets/son/losingtheme.mp3");
 }
 
 function setup() {
@@ -107,6 +114,17 @@ function setup() {
 }
 
 function draw() {
+  // Écran de démarrage (menu)
+  if (gameState === "menu") {
+    // Cacher tous les sprites du terrain
+    if (typeof allSprites !== "undefined") {
+      allSprites.visible = false;
+    }
+    background("#FFF5BE");
+    drawStartScreen();
+    return;
+  }
+
   // Si on a gagné, cacher tous les sprites et afficher l'écran de victoire
   if (gameState === "win") {
     // Cacher tous les sprites du monde
@@ -114,6 +132,16 @@ function draw() {
       allSprites.visible = false;
     }
     // Fond noir complet
+    background(0);
+    drawEndScreen();
+    return;
+  }
+
+  // Si on a perdu, cacher tous les sprites et afficher l'écran de défaite (style win)
+  if (gameState === "lose") {
+    if (typeof allSprites !== "undefined") {
+      allSprites.visible = false;
+    }
     background(0);
     drawEndScreen();
     return;
@@ -130,11 +158,7 @@ function draw() {
   // Parallax-ish simple scenery (drawn in screen space, not world space)
   drawBackdrop();
 
-  // Only block gameplay on lose screen (boss remains playable)
-  if (gameState === "lose") {
-    drawEndScreen();
-    return;
-  }
+  // lose est géré plus haut (fond noir + sprites cachés)
 
   // --- Controls ---
   updateBodyInputs();
@@ -162,8 +186,14 @@ function keyPressed() {
 }
 
 function mousePressed() {
-  // Si on est sur l'écran de victoire, vérifier le clic sur le bouton
-  if (gameState === "win" && typeof restartButton !== "undefined") {
+  // Si on est sur l'écran de démarrage, cliquer pour commencer
+  if (gameState === "menu") {
+    gameState = "play";
+    return;
+  }
+
+  // Si on est sur l'écran de victoire/défaite, vérifier le clic sur le bouton
+  if ((gameState === "win" || gameState === "lose") && typeof restartButton !== "undefined") {
     const mouseOverButton = 
       mouseX >= restartButton.x - restartButton.w / 2 &&
       mouseX <= restartButton.x + restartButton.w / 2 &&
@@ -180,8 +210,14 @@ function mousePressed() {
 }
 
 function touchStarted() {
-  // Si on est sur l'écran de victoire, vérifier le touch sur le bouton
-  if (gameState === "win" && typeof restartButton !== "undefined") {
+  // Si on est sur l'écran de démarrage, toucher pour commencer
+  if (gameState === "menu") {
+    gameState = "play";
+    return false;
+  }
+
+  // Si on est sur l'écran de victoire/défaite, vérifier le touch sur le bouton
+  if ((gameState === "win" || gameState === "lose") && typeof restartButton !== "undefined") {
     const touchOverButton = 
       mouseX >= restartButton.x - restartButton.w / 2 &&
       mouseX <= restartButton.x + restartButton.w / 2 &&

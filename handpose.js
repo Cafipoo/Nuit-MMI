@@ -102,6 +102,7 @@ function gotHands(results) {
   if (handPoseEnabled && handPoseReady) {
     updateHandPositions();
     detectMovement();
+    detectHorizontalMovement(); // Détecter le mouvement horizontal pour tirer
   }
 }
 
@@ -455,5 +456,116 @@ function isVerticalMovement(positions) {
   return { 
     moving: isMoving, 
     speed: isMoving ? speed : 0 
+  };
+}
+
+// Variables pour suivre le mouvement horizontal et déclencher le tir
+let horizontalMovementDetected = false;
+let lastHorizontalFireTime = 0;
+const HORIZONTAL_FIRE_COOLDOWN = 400; // Cooldown de 400ms entre les tirs
+
+// Fonction pour détecter le mouvement horizontal des mains et déclencher le tir
+function detectHorizontalMovement() {
+  if (!handPoseEnabled || !handPoseReady) return;
+  if (!hands || !Array.isArray(hands) || hands.length === 0) {
+    horizontalMovementDetected = false;
+    return;
+  }
+
+  let anyHandMovingHorizontally = false;
+
+  // Vérifier chaque main détectée
+  for (let i = 0; i < hands.length; i++) {
+    let hand = hands[i];
+    if (!hand || !hand.keypoints || !Array.isArray(hand.keypoints)) continue;
+
+    // Trouver le poignet
+    let wrist = null;
+    for (let j = 0; j < hand.keypoints.length; j++) {
+      let keypoint = hand.keypoints[j];
+      if (keypoint && keypoint.name === "wrist") {
+        wrist = { x: keypoint.x, y: keypoint.y };
+        break;
+      }
+    }
+
+    if (!wrist) continue;
+
+    // Vérifier l'historique des positions pour cette main
+    let positions = hand.handedness === "Left" ? previousPositions.left : previousPositions.right;
+    
+    if (positions.length >= 3) {
+      let result = isHorizontalMovement(positions);
+      if (result.moving) {
+        anyHandMovingHorizontally = true;
+        break;
+      }
+    }
+  }
+
+  // Si un mouvement horizontal est détecté et le cooldown est écoulé, tirer
+  const now = millis();
+  if (anyHandMovingHorizontally && !horizontalMovementDetected) {
+    // Nouveau mouvement détecté
+    horizontalMovementDetected = true;
+    if (now - lastHorizontalFireTime >= HORIZONTAL_FIRE_COOLDOWN) {
+      if (typeof tryFireMissile === "function") {
+        tryFireMissile();
+        lastHorizontalFireTime = now;
+      }
+    }
+  } else if (!anyHandMovingHorizontally) {
+    horizontalMovementDetected = false;
+  }
+}
+
+// Fonction pour vérifier si une main fait un mouvement horizontal
+function isHorizontalMovement(positions) {
+  if (positions.length < 3) {
+    return { moving: false, speed: 0 };
+  }
+
+  // Calculer la variation horizontale (X) - utiliser les dernières positions
+  let recentPositions = positions.slice(-5);
+  let minX = recentPositions[0].x;
+  let maxX = recentPositions[0].x;
+
+  for (let i = 1; i < recentPositions.length; i++) {
+    if (recentPositions[i].x < minX) minX = recentPositions[i].x;
+    if (recentPositions[i].x > maxX) maxX = recentPositions[i].x;
+  }
+
+  let horizontalRange = maxX - minX;
+
+  // Calculer la variation verticale (Y)
+  let minY = recentPositions[0].y;
+  let maxY = recentPositions[0].y;
+
+  for (let i = 1; i < recentPositions.length; i++) {
+    if (recentPositions[i].y < minY) minY = recentPositions[i].y;
+    if (recentPositions[i].y > maxY) maxY = recentPositions[i].y;
+  }
+
+  let verticalRange = maxY - minY;
+
+  // Calculer la vitesse du mouvement horizontal
+  let speed = 0;
+  if (recentPositions.length >= 2) {
+    let totalHorizontalDistance = 0;
+    for (let i = 1; i < recentPositions.length; i++) {
+      let deltaX = Math.abs(recentPositions[i].x - recentPositions[i-1].x);
+      totalHorizontalDistance += deltaX;
+    }
+    speed = totalHorizontalDistance / (recentPositions.length - 1);
+  }
+
+  // Mouvement horizontal si :
+  // 1. La variation horizontale est significative
+  // 2. La variation horizontale est supérieure à la variation verticale (mouvement principalement horizontal)
+  let isMoving = horizontalRange > movementThreshold && horizontalRange > verticalRange * 1.2;
+
+  return {
+    moving: isMoving,
+    speed: isMoving ? speed : 0
   };
 }

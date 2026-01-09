@@ -6,28 +6,18 @@ function drawHUD() {
   push();
   rectMode(CENTER);
 
-  // Top bar
-  noStroke();
-  fill(15, 23, 42, 180);
-  rect(width / 2, 26, width, 52);
-
-  fill("#f8fafc");
-  textSize(16);
-  textAlign(LEFT, CENTER);
-  text(`Score: ${score}`, 16, 26);
+  // Score en haut au centre (sans fond)
+  fill(255, 20, 147); // Rose
+  textSize(20);
+  textAlign(CENTER, CENTER);
+  textStyle(BOLD);
+  text(`Score: ${score}`, width / 2, 30);
   
   // Barre de vie (cœurs) - à gauche sous le score
   drawHealthBar();
   
   // Barre de durée du power-up - à droite sous le score
   drawPowerUpBar();
-
-
-  textAlign(CENTER, CENTER);
-  text("Move: gesture '67' (webcam) | Turn: F | Jump: G (Makey Makey) | Fullscreen: P", width / 2, 26);
-
-  textAlign(RIGHT, CENTER);
-  text("Restart: R | Mic: click/tap to enable", width - 16, 26);
 
   // Webcam preview (top-right)
   if (typeof video !== "undefined" && video) {
@@ -289,6 +279,86 @@ function drawPowerUpBar() {
   pop();
 }
 
+function drawStartScreen() {
+  camera.off();
+  push();
+  
+  // Fond avec le backdrop (en arrière-plan)
+  drawBackdrop();
+  
+  // Overlay semi-transparent pour assurer la lisibilité
+  fill(0, 0, 0, 100);
+  rectMode(CORNER);
+  noStroke();
+  rect(0, 0, width, height);
+  
+  // Carte centrale avec les règles (opacité maximale pour être au premier plan)
+  rectMode(CENTER);
+  noStroke();
+  fill(15, 23, 42, 255); // Opacité maximale
+  const cardW = min(800, width - 40);
+  const cardH = min(600, height - 40);
+  rect(width / 2, height / 2, cardW, cardH, 20);
+  
+  // Titre
+  fill("#f8fafc");
+  textAlign(CENTER, CENTER);
+  textSize(48);
+  textStyle(BOLD);
+  text("67", width / 2, height / 2 - 240);
+  
+  // Règles du jeu
+  textSize(22);
+  textStyle(NORMAL);
+  textAlign(LEFT, TOP);
+  const rulesX = width / 2 - cardW / 2 + 40;
+  const rulesY = height / 2 - 180;
+  const lineHeight = 32;
+  
+  fill("#e2e8f0");
+  textSize(20);
+  textStyle(BOLD);
+  text("RÈGLES DU JEU", rulesX, rulesY);
+  
+  fill("#cbd5e1");
+  textSize(18);
+  textStyle(NORMAL);
+  text("• Collectez les pièces pour gagner des points", rulesX, rulesY + lineHeight * 1.5);
+  text("• Évitez les cactus et les monstres (pizza/burger)", rulesX, rulesY + lineHeight * 2.5);
+  text("• Sauttez sur les cubes pour faire sortir des power-ups", rulesX, rulesY + lineHeight * 3.5);
+  text("• Atteignez 50 points pour être téléporté au drapeau", rulesX, rulesY + lineHeight * 4.5);
+  text("• Battez le boss final pour gagner !", rulesX, rulesY + lineHeight * 5.5);
+  
+  // Commandes
+  fill("#e2e8f0");
+  textSize(20);
+  textStyle(BOLD);
+  text("COMMANDES", rulesX, rulesY + lineHeight * 7);
+  
+  fill("#cbd5e1");
+  textSize(18);
+  textStyle(NORMAL);
+  text("• Déplacement : Gesture '67' (webcam)", rulesX, rulesY + lineHeight * 8.5);
+  text("• Tirer : Mouvement horizontal des mains (webcam)", rulesX, rulesY + lineHeight * 9.5);
+  text("• Tourner : Touche F", rulesX, rulesY + lineHeight * 10.5);
+  text("• Sauter : Touche G (ou Makey Makey)", rulesX, rulesY + lineHeight * 11.5);
+  text("• Plein écran : Touche P", rulesX, rulesY + lineHeight * 12.5);
+  text("• Redémarrer : Touche R", rulesX, rulesY + lineHeight * 13.5);
+  
+  // Message pour commencer
+  textAlign(CENTER, CENTER);
+  fill("#fbbf24");
+  textSize(24);
+  textStyle(BOLD);
+  const blink = Math.floor(frameCount / 30) % 2;
+  if (blink === 0) {
+    text("CLIQUEZ POUR COMMENCER", width / 2, height / 2 + 220);
+  }
+  
+  pop();
+  camera.on();
+}
+
 function drawEndScreen() {
   if (gameState === "win") {
     // Écran de victoire style Absolute Cinema
@@ -374,28 +444,58 @@ function drawWinScreen() {
 }
 
 function drawLoseScreen() {
-  // Keep the world visible, but overlay a centered card
-  drawHUD();
+  // Fond noir style Absolute Cinema (comme win)
   camera.off();
   push();
+
+  // Dessiner le SVG defeat au centre (légèrement décalé vers le haut)
+  if (typeof defeatCharacter !== "undefined" && defeatCharacter && defeatCharacter.width) {
+    push();
+    imageMode(CENTER);
+    const size = min(width * 0.42, height * 0.52);
+    const aspectRatio = defeatCharacter.width / defeatCharacter.height;
+    const w = size;
+    const h = size / aspectRatio;
+    image(defeatCharacter, width / 2, height / 2 - 110, w, h);
+    pop();
+  }
+
+  // Texte "ABSOLUTE LOOSER" (style win)
+  push();
+  textAlign(CENTER);
+  textFont("system-ui");
+  textSize(72);
+  textStyle(BOLD);
+  // Ombre
+  fill(0, 0, 0, 150);
+  text("ABSOLUTE LOOSER", width / 2 + 3, height - 150 + 3);
+  // Texte
+  fill(255, 255, 255);
+  text("ABSOLUTE LOOSER", width / 2, height - 150);
+  pop();
+
+  // Bouton pour rejouer (même style que win)
+  restartButton.x = width / 2;
+  restartButton.y = height - 60;
+
+  const mouseOverButton =
+    mouseX >= restartButton.x - restartButton.w / 2 &&
+    mouseX <= restartButton.x + restartButton.w / 2 &&
+    mouseY >= restartButton.y - restartButton.h / 2 &&
+    mouseY <= restartButton.y + restartButton.h / 2;
+
+  push();
   rectMode(CENTER);
-
   noStroke();
-  fill(15, 23, 42, 220);
-  rect(width / 2, height / 2, min(720, width - 40), 220, 18);
+  fill(mouseOverButton ? 255 : 200, mouseOverButton ? 255 : 200, mouseOverButton ? 255 : 200);
+  rect(restartButton.x, restartButton.y, restartButton.w, restartButton.h, 8);
 
-  fill("#f8fafc");
+  fill(0, 0, 0);
+  textSize(24);
+  textStyle(BOLD);
   textAlign(CENTER, CENTER);
-
-  textSize(34);
-  text("Game Over", width / 2, height / 2 - 60);
-
-  textSize(18);
-  text(player._loseReason || "Try again!", width / 2, height / 2 - 22);
-
-  textSize(16);
-  text(`Final score: ${score}`, width / 2, height / 2 + 16);
-  text("Press R to restart", width / 2, height / 2 + 52);
+  text("REJOUER", restartButton.x, restartButton.y);
+  pop();
 
   pop();
   camera.on();

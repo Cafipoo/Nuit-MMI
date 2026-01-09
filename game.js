@@ -1,10 +1,10 @@
 // ------------ Game logic and state management ------------
 
 // Debug helper: set to 50 if you want to test the teleport quickly
-const DEBUG_START_SCORE = 0;
+const DEBUG_START_SCORE = 50;
 
 let score = DEBUG_START_SCORE;
-let gameState = "play"; // "play" | "boss" | "win" | "lose"
+let gameState = "menu"; // "menu" | "play" | "boss" | "win" | "lose"
 let hasTeleportedToFinish = false;
 const SCORE_TELEPORT_THRESHOLD = 50;
 let playerHealth = GAME.maxHearts * 2; // Vie en demi-cœurs (3 cœurs = 6 demi-cœurs)
@@ -29,14 +29,23 @@ let powerUpDuration = 0;
 let bossArena = null; // { active, leftX, rightX, centerX }
 let boss = null;
 let arenaWalls = null;
+let bossLasers = null;
 
 // Missiles (projectiles)
 let lastMissileFireMs = -Infinity;
 const MISSILE_COOLDOWN_MS = 260;
 const MISSILE_SPEED = 70;
-const MISSILE_LIFETIME_MS = 2200;
+const MISSILE_LIFETIME_MS = 500; // 2 secondes
 const MISSILE_EXPLOSION_MS = 220;
 const BOSS_MAX_HP = 10;
+
+// Boss laser attack (telegraphed)
+const BOSS_LASER = {
+  warnMs: 900,
+  fireMs: 520,
+  cooldownMs: 650,
+  width: 56,
+};
 
 function isPlayerInvincible() {
   return isInvincible || activePowerUp === "mega";
@@ -438,6 +447,12 @@ function initBossArena() {
   finishFlag?.remove();
   missiles?.removeAll?.();
 
+  // Boss lasers (telegraphed ground strikes)
+  bossLasers?.removeAll?.();
+  bossLasers = new Group();
+  bossLasers.collider = "none";
+  bossLasers.layer = 10;
+
   // Create arena bounds right after the old flag position.
   // Arena width matches the screen width so the screen borders are the limits.
   const baseX = (typeof finishFlag !== "undefined" && finishFlag) ? finishFlag.x : player.x;
@@ -465,6 +480,7 @@ function initBossArena() {
   boss.rotationLock = true;
   boss._hp = BOSS_MAX_HP;
   boss._maxHp = BOSS_MAX_HP;
+  boss._nextLaserMs = millis() + 900;
   boss.draw = () => {
     // --- Boss sprite ---
     const img = typeof mapAssets !== "undefined" ? mapAssets.monstre : null;
@@ -518,16 +534,171 @@ function updateBossArena() {
   const leftBound = camera.x - width / 2 + pad;
   const rightBound = camera.x + width / 2 - pad;
   player.x = constrain(player.x, leftBound, rightBound);
+
+  updateBossLasers();
+}
+
+function getGroundTopY() {
+  // Prefer the real ground top from level.js when available.
+  if (typeof GROUND_TOP_Y === "number" && GROUND_TOP_Y > 0) return GROUND_TOP_Y;
+  // Fallback (matches older logic)
+  return height - 100;
+}
+
+function spawnBossLaser(targetX) {
+  if (!bossLasers) return null;
+  const groundTop = getGroundTopY();
+
+  // Beam anchored to the ground: bottom = groundTop, top = groundTop - height
+  const h = height;
+  const y = groundTop - h / 2;
+  const w = BOSS_LASER.width;
+
+  const l = new bossLasers.Sprite(targetX, y, w, h);
+  l.rotationLock = true;
+  l._state = "warn"; // "warn" | "fire"
+  l._t0 = millis();
+  l._didDamage = false;
+
+  l.draw = () => {
+    const groundMarkerH = 14;
+    const markerY = l.h * 0.5 - groundMarkerH * 0.5; // near the bottom (ground)
+
+    if (l._state === "warn") {
+      // Ground telegraph (no damage)
+      const blink = Math.floor(frameCount / 10) % 2;
+      noStroke();
+      // Rose
+      fill(255, 20, 147, blink ? 140 : 80);
+      rectMode(CENTER);
+      rect(0, markerY, l.w * 1.15, groundMarkerH, 6);
+      fill(255, 255, 255, 120);
+      rect(0, markerY, l.w * 0.45, 4, 3);
+      return;
+    }
+
+    // Fire phase: vertical beam
+    push();
+    rectMode(CENTER);
+    noStroke();
+    // outer glow
+    fill(255, 20, 147, 70);
+    rect(0, 0, l.w * 2.4, l.h, 18);
+    // core
+    fill(255, 20, 147, 165);
+    rect(0, 0, l.w, l.h, 10);
+    // ground impact
+    fill(255, 105, 180, 200);
+    rect(0, markerY, l.w * 1.25, groundMarkerH, 7);
+    pop();
+  };
+
+  return l;
+}
+
+function bossLaserHitsPlayer(l) {
+  if (!l || l._state !== "fire") return false;
+  if (typeof player === "undefined" || !player) return false;
+
+  // Beam AABB: [x-w/2, x+w/2] × [top, groundTop]
+  const groundTop = getGroundTopY();
+  const beamLeft = l.x - l.w / 2;
+  const beamRight = l.x + l.w / 2;
+  const beamTop = groundTop - l.h;
+  const beamBottom = groundTop;
+
+  const pLeft = player.x - player.w / 2;
+  const pRight = player.x + player.w / 2;
+  const pTop = player.y - player.h / 2;
+  const pBottom = player.y + player.h / 2;
+
+  const overlapX = pRight >= beamLeft && pLeft <= beamRight;
+  const overlapY = pBottom >= beamTop && pTop <= beamBottom;
+  return overlapX && overlapY;
+}
+
+function damagePlayerBossLaser() {
+  if (isPlayerInvincible()) return;
+
+  const now = millis();
+  if (now - lastDamageTime < damageCooldown) return;
+  lastDamageTime = now;
+
+  // 1.5 hearts = 3 demi-cœurs (playerHealth est en demi-cœurs)
+  playerHealth -= 3;
+  if (playerHealth < 0) playerHealth = 0;
+
+  activateInvincibility();
+  applyKnockback();
+
+  if (playerHealth <= 0) {
+    setLose("You were hit by the boss laser!");
+  }
+}
+
+function updateBossLasers() {
+  if (typeof gameState === "undefined" || gameState !== "boss") return;
+  if (!boss || !bossLasers) return;
+
+  const now = millis();
+
+  // Update existing lasers
+  for (const l of bossLasers) {
+    if (!l) continue;
+
+    if (l._state === "warn") {
+      if (now - (l._t0 || now) >= BOSS_LASER.warnMs) {
+        l._state = "fire";
+        l._tFire = now;
+        l._didDamage = false;
+      }
+    } else if (l._state === "fire") {
+      if (!l._didDamage && bossLaserHitsPlayer(l)) {
+        damagePlayerBossLaser();
+        l._didDamage = true;
+      }
+      if (now - (l._tFire || now) >= BOSS_LASER.fireMs) {
+        l.remove?.();
+      }
+    }
+  }
+
+  // Spawn a new telegraphed strike if none active and cooldown elapsed
+  const anyActive = bossLasers.length > 0;
+  if (!anyActive && now >= (boss._nextLaserMs || 0)) {
+    const pad = 80;
+    const left = bossArena?.leftX ? bossArena.leftX + pad : camera.x - width / 2 + pad;
+    const right = bossArena?.rightX ? bossArena.rightX - pad : camera.x + width / 2 - pad;
+    // 2 lasers per wave
+    const t1 = constrain(player.x + random(-160, 160), left, right);
+    // second target must be separated to read clearly
+    const minSep = BOSS_LASER.width * 1.6;
+    let t2 = constrain(player.x + random(-220, 220), left, right);
+    if (Math.abs(t2 - t1) < minSep) {
+      t2 = constrain(t1 + (random() < 0.5 ? -1 : 1) * minSep, left, right);
+    }
+    spawnBossLaser(t1);
+    spawnBossLaser(t2);
+    boss._nextLaserMs =
+      now + BOSS_LASER.warnMs + BOSS_LASER.fireMs + BOSS_LASER.cooldownMs + random(150, 450);
+  }
 }
 
 function setLose(reason) {
   // Prevent multiple triggers
-  if (gameState !== "play") return;
+  if (gameState === "win" || gameState === "lose") return;
   gameState = "lose";
   player.vel.x = 0;
   player.vel.y = 0;
   player.sleeping = true;
   player._loseReason = reason;
+  
+  // Jouer le son de défaite (volume à 50%)
+  if (typeof losingTheme !== "undefined" && losingTheme) {
+    losingTheme.stop(); // Arrêter si déjà en cours
+    losingTheme.setVolume(0.5); // Volume à 50%
+    losingTheme.play();
+  }
 }
 
 function checkCubeHits() {
@@ -686,7 +857,7 @@ function restartGame() {
   // Simplest reset: clear sprites/groups and rebuild.
   // This avoids subtle physics state bugs in a hackathon setting.
   score = 0;
-  gameState = "play";
+  gameState = "menu";
   hasTeleportedToFinish = false;
   playerDirection = 1; // Reset direction
   playerHealth = GAME.maxHearts * 2; // Réinitialiser la vie
@@ -696,10 +867,17 @@ function restartGame() {
   activePowerUp = null;
   powerUpStartTime = 0;
   powerUpDuration = 0;
+  
+  // Arrêter le son de défaite si en cours
+  if (typeof losingTheme !== "undefined" && losingTheme) {
+    losingTheme.stop();
+  }
 
   bossArena = null;
   boss?.remove?.();
   boss = null;
+  bossLasers?.removeAll?.();
+  bossLasers = null;
   arenaWalls?.removeAll?.();
   arenaWalls = null;
   missiles?.removeAll?.();
