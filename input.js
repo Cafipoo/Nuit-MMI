@@ -90,6 +90,12 @@ function handleKeyInput() {
   if (key === "f" || key === "F") {
     turnPlayer();
   }
+  // Shoot missile with M
+  if (key === "m" || key === "M") {
+    if (typeof tryFireMissile === "function") {
+      tryFireMissile();
+    }
+  }
   // Fullscreen toggle with P
   if (key === "p" || key === "P") {
     fullscreen(!fullscreen());

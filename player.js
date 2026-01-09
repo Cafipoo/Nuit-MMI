@@ -81,8 +81,13 @@ function createPlayer() {
       const targetH = player.h * 2.6 * visualScale;
       const targetW = targetH * aspectRatio; // Préserver le ratio
 
-      // Centrer verticalement avec un léger offset vers le haut
-      image(img, 0, 6, targetW, targetH);
+      // IMPORTANT: ancrer visuellement le personnage sur le sol.
+      // p5play place le sprite par son centre, donc pour que les "pieds" touchent le sol,
+      // on aligne le BAS de l'image sur le BAS du collider du sprite.
+      // imageMode(CENTER): basImage = yOff + targetH/2 ; basSprite = player.h/2
+      // => yOff = player.h/2 - targetH/2
+      const yOff = (player.h - targetH) * 0.5 + 2; // +2 pour un léger "contact" visuel
+      image(img, 0, yOff, targetW, targetH);
       pop();
       return;
     }

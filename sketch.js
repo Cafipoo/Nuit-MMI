@@ -27,6 +27,10 @@ let mapAssets = {
   myrtilles: null,
   cactus: null,
   monstre: null,
+  drapeau: null,
+  burger: null,
+  pizza: null,
+  piece: null,
   trees: null
 };
 
@@ -56,6 +60,10 @@ function preload() {
   mapAssets.myrtilles = loadImage("assets/map/myrtilles.svg");
   mapAssets.cactus = loadImage("assets/map/cactus.svg");
   mapAssets.monstre = loadImage("assets/map/monstre.svg");
+  mapAssets.drapeau = loadImage("assets/map/drapeau.svg");
+  mapAssets.burger = loadImage("assets/map/burger.svg");
+  mapAssets.pizza = loadImage("assets/map/pizza.svg");
+  mapAssets.piece = loadImage("assets/map/Pièce.svg");
   mapAssets.trees = [
     loadImage("assets/map/arbre1.svg"),
     loadImage("assets/map/arbre2.svg"),

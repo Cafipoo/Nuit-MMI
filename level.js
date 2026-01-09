@@ -8,6 +8,8 @@ let finishFlag;
 let cubes;
 let powerUps;
 let decorTrees;
+let missiles;
+let enemies;
 
 // Cached layout values (set in buildLevel)
 let GROUND_TOP_Y = 0;
@@ -59,7 +61,19 @@ function initLevelGroups() {
   // Decorative trees (no collisions, purely visual)
   decorTrees = new Group();
   decorTrees.collider = "none";
+  // Toujours au fond (dessinés derrière le reste)
+  // (p5play: plus petit layer = plus arrière)
+  decorTrees.layer = -20;
 
+  // Missiles (player projectiles)
+  missiles = new Group();
+  missiles.collider = "dynamic";
+  missiles.color = color("#f97316"); // orange
+
+  // Enemies (burger/pizza)
+  enemies = new Group();
+  enemies.collider = "dynamic";
+  enemies.color = color("#111827");
 }
 
 function buildLevel() {
@@ -107,35 +121,53 @@ function buildLevel() {
 
   // Spikes (obstacles) - ajustés pour le sol plus haut
   // Keep them mostly on ground so the rule "avoid obstacles" is clear
-  const spikeY = groundY - groundHeight / 2 - 15; // Sur le sol, légèrement au-dessus
-  addSpike(680, spikeY, 48, 38);
-  addSpike(960, spikeY, 48, 38);
-  addSpike(2050, spikeY, 48, 38);
-  addSpike(2120, spikeY, 48, 38);
-  addSpike(3300, spikeY, 48, 38);
-  addSpike(3365, spikeY, 48, 38);
-  addSpike(3700, spikeY, 48, 38);
-  addSpike(4480, spikeY, 48, 38);
+  const spikeH = 38;
+  const spikeY = GROUND_TOP_Y - spikeH / 2; // Base du collider pile sur le sol
+  addSpike(680, spikeY, 48, spikeH);
+  addSpike(960, spikeY, 48, spikeH);
+  addSpike(2050, spikeY, 48, spikeH);
+  addSpike(2120, spikeY, 48, spikeH);
+  addSpike(3300, spikeY, 48, spikeH);
+  addSpike(3365, spikeY, 48, spikeH);
+  addSpike(3700, spikeY, 48, spikeH);
+  addSpike(4480, spikeY, 48, spikeH);
 
   // Finish flag - ajusté pour le sol plus haut
-  finishFlag = new Sprite(GAME.levelLength - 140, groundY - 70, 26, 140, "static");
-  finishFlag.color = color("#a855f7"); // purple
+  // Poser le drapeau au-dessus du sol (base alignée sur GROUND_TOP_Y)
+  const flagH = 160;
+  const flagW = 60;
+  const flagY = GROUND_TOP_Y - flagH / 2 - 2; // -2: un tout petit espace au-dessus du sol
+  finishFlag = new Sprite(GAME.levelLength - 140, flagY, flagW, flagH, "static");
+  finishFlag.color = color("#a855f7"); // fallback color
   finishFlag.draw = () => {
-    // Pole
+    const img = typeof mapAssets !== "undefined" ? mapAssets.drapeau : null;
+    if (img && img.width) {
+      push();
+      imageMode(CENTER);
+      noTint();
+      const aspect = (img.width || 1) / (img.height || 1);
+      const targetH = finishFlag.h * 1.05;
+      const targetW = targetH * aspect;
+      // Ancrer le bas de l'image sur le bas du sprite
+      const yOff = (finishFlag.h - targetH) * 0.5;
+      image(img, 0, yOff, targetW, targetH);
+      pop();
+      return;
+    }
+
+    // Fallback si SVG non chargé
     noStroke();
     fill("#f8fafc");
-    rect(0, 0, finishFlag.w * 0.25, finishFlag.h, 6);
-
-    // Flag cloth (simple triangle)
+    rect(0, 0, finishFlag.w * 0.18, finishFlag.h, 6);
     fill("#a855f7");
-    const poleX = -finishFlag.w * 0.15;
+    const poleX = -finishFlag.w * 0.1;
     triangle(
-      poleX + finishFlag.w * 0.22,
-      -finishFlag.h * 0.30,
-      poleX + finishFlag.w * 0.22,
+      poleX + finishFlag.w * 0.2,
+      -finishFlag.h * 0.28,
+      poleX + finishFlag.w * 0.2,
       -finishFlag.h * 0.05,
-      poleX + finishFlag.w * 1.25,
-      -finishFlag.h * 0.18
+      poleX + finishFlag.w * 0.95,
+      -finishFlag.h * 0.16
     );
   };
 }
@@ -151,6 +183,7 @@ function initMapGeneration() {
   platforms?.removeAll();
   cubes?.removeAll();
   decorTrees?.removeAll();
+  enemies?.removeAll();
 
   // Start a bit ahead of the player
   const startX = (typeof player !== "undefined" && player) ? player.x + 300 : 300;
@@ -210,8 +243,15 @@ function updateMapGeneration(force = false) {
     }
 
     // Decorative tree on/near the ground (random spacing and random type)
-    if (random() < 0.8) {
-      addDecorTree(GEN_NEXT_X + random(-120, 120));
+    // Désactivé : arbres retirés
+    // if (random() < 0.8) {
+    //   addDecorTree(GEN_NEXT_X + random(-120, 120));
+    // }
+
+    // Enemy on the ground (rare)
+    if (random() < 0.35) {
+      const enemyX = GEN_NEXT_X + step * random(0.25, 0.9);
+      addEnemy(enemyX);
     }
 
     GEN_NEXT_X += step;
@@ -233,10 +273,59 @@ function cleanupGenerated() {
   for (const t of decorTrees) {
     if (t && t.x < minX) t.remove();
   }
+  for (const e of enemies) {
+    if (e && e.x < minX) e.remove();
+  }
   for (const coin of coins) {
     // Only cleanup coins that were generated procedurally (keep things bounded)
     if (coin && coin.x < minX) coin.remove();
   }
+}
+
+function addEnemy(x) {
+  if (typeof enemies === "undefined" || !enemies) return null;
+
+  const w = 80;
+  const h = 70;
+  const y = GROUND_TOP_Y - h / 2;
+
+  const e = new enemies.Sprite(x, y, w, h);
+  e.rotationLock = true;
+  e.friction = 0.0;
+  e.bounciness = 0;
+  e._hp = 1;
+  e._type = random() < 0.5 ? "burger" : "pizza";
+  e._dir = random() < 0.5 ? -1 : 1;
+  e._speed = random(1.6, 2.6);
+  e._lastTurnFrame = 0;
+
+  e.draw = () => {
+    const img =
+      typeof mapAssets !== "undefined" && mapAssets ? mapAssets[e._type] : null;
+    if (img && img.width) {
+      push();
+      imageMode(CENTER);
+      noTint();
+      const aspect = (img.width || 1) / (img.height || 1);
+      const targetH = e.h * 1.4;
+      const targetW = targetH * aspect;
+      // Ancrer bas image sur bas collider
+      const yOff = (e.h - targetH) * 0.5 + 1;
+      image(img, 0, yOff, targetW, targetH);
+      pop();
+      return;
+    }
+    // fallback
+    noStroke();
+    fill(17, 24, 39);
+    rect(0, 0, e.w, e.h, 10);
+    fill(255);
+    textAlign(CENTER, CENTER);
+    textSize(12);
+    text(e._type === "pizza" ? "PIZZA" : "BURGER", 0, 0);
+  };
+
+  return e;
 }
 
 function addDecorTree(x) {
@@ -244,13 +333,15 @@ function addDecorTree(x) {
 
   const treeH = 190;
   const treeW = 150;
-  const y = GROUND_TOP_Y - treeH / 2 + 6; // sit slightly into the ground
+  // Placer le bas du sprite pile sur le sol
+  const y = GROUND_TOP_Y - treeH / 2;
 
   const t = new decorTrees.Sprite(x, y, treeW, treeH);
   t.collider = "none";
   t.rotationLock = true;
   t._treeIndex = Math.floor(random(0, 3));
   t._parallax = random(0.78, 0.9); // slower than world to feel "in the back"
+  t.layer = -20;
 
   t.draw = () => {
     const imgs = typeof mapAssets !== "undefined" ? mapAssets.trees : null;
@@ -259,15 +350,17 @@ function addDecorTree(x) {
     if (img && img.width) {
       push();
       imageMode(CENTER);
-      // Visual "background" treatment
-      tint(255, 150);
+      // Arbres au fond mais OPAQUES
+      noTint();
       const parallaxOffsetX =
         typeof camera !== "undefined" ? -camera.x * (1 - t._parallax) : 0;
       translate(parallaxOffsetX, 0);
       const aspect = (img.width || 100) / (img.height || 100);
-      const h = treeH * 0.9; // slightly smaller to read as background
+      const h = treeH * 0.9; // légèrement plus petit pour le "fond"
       const w = h * aspect;
-      image(img, 0, 0, w, h);
+      // Ancrer le bas de l'image sur le bas du sprite (sinon ça "flotte")
+      const yOff = (treeH - h) * 0.5;
+      image(img, 0, yOff, w, h);
       pop();
     } else {
       // Visible fallback if image didn't load
@@ -323,8 +416,9 @@ function addSpike(x, y, w, h) {
       // Un cactus est naturellement plus haut qu'un pic: on le dessine un peu plus grand
       const drawH = s.h * 2.2;
       const drawW = drawH * aspect;
-      // Légèrement relevé pour que la "base" semble posée sur le sol
-      image(img, 0, -s.h * 0.15, drawW, drawH);
+      // Ancrer la base du cactus sur le bas du collider (posé sur le sol)
+      const yOff = (s.h - drawH) * 0.5 + 1;
+      image(img, 0, yOff, drawW, drawH);
       pop();
     } else {
       // Fallback si l'image n'est pas chargée
@@ -343,11 +437,24 @@ function addSpike(x, y, w, h) {
 function addCoin(x, y) {
   const c = new coins.Sprite(x, y, 22, 22);
   c.draw = () => {
-    noStroke();
-    fill("#fbbf24");
-    circle(0, 0, 20);
-    fill("#fde68a");
-    circle(-3, -3, 7);
+    const img = typeof mapAssets !== "undefined" && mapAssets.piece ? mapAssets.piece : null;
+    if (img && img.width) {
+      push();
+      imageMode(CENTER);
+      noTint();
+      const aspect = (img.width || 1) / (img.height || 1);
+      const targetH = c.h * 1.2;
+      const targetW = targetH * aspect;
+      image(img, 0, 0, targetW, targetH);
+      pop();
+    } else {
+      // Fallback si l'image n'est pas chargée
+      noStroke();
+      fill("#fbbf24");
+      circle(0, 0, 20);
+      fill("#fde68a");
+      circle(-3, -3, 7);
+    }
   };
   return c;
 }
@@ -362,11 +469,14 @@ function addCube(x, y) {
     // Toujours dessiner le cube, même si l'image n'est pas chargée
     if (cube.hit) {
       // Cube frappé : afficher un bloc vide/gris (comme dans Mario)
+      push();
+      rectMode(CENTER);
       noStroke();
       fill(100, 100, 100); // Gris
-      rect(-cube.w / 2, -cube.h / 2, cube.w, cube.h, 4);
+      rect(0, 0, cube.w, cube.h, 4);
       fill(80, 80, 80);
-      rect(-cube.w / 2 + 2, -cube.h / 2 + 2, cube.w - 4, cube.h - 4, 2);
+      rect(0, 0, cube.w - 4, cube.h - 4, 2);
+      pop();
     } else {
       // Vérifier si l'image est chargée
       const cubeImageLoaded = typeof mapAssets !== "undefined" && mapAssets.cube && mapAssets.cube.width && mapAssets.cube.width > 0;

@@ -1,7 +1,7 @@
 // ------------ Game logic and state management ------------
 
 // Debug helper: set to 50 if you want to test the teleport quickly
-const DEBUG_START_SCORE = 50;
+const DEBUG_START_SCORE = 0;
 
 let score = DEBUG_START_SCORE;
 let gameState = "play"; // "play" | "boss" | "win" | "lose"
@@ -30,8 +30,127 @@ let bossArena = null; // { active, leftX, rightX, centerX }
 let boss = null;
 let arenaWalls = null;
 
+// Missiles (projectiles)
+let lastMissileFireMs = -Infinity;
+const MISSILE_COOLDOWN_MS = 260;
+const MISSILE_SPEED = 70;
+const MISSILE_LIFETIME_MS = 2200;
+const MISSILE_EXPLOSION_MS = 220;
+const BOSS_MAX_HP = 10;
+
 function isPlayerInvincible() {
   return isInvincible || activePowerUp === "mega";
+}
+
+function tryFireMissile() {
+  // allow in play/boss; block on end screens
+  if (typeof player === "undefined" || !player) return;
+  if (gameState === "win" || gameState === "lose") return;
+  if (typeof missiles === "undefined" || !missiles) return;
+
+  const now = millis();
+  if (now - lastMissileFireMs < MISSILE_COOLDOWN_MS) return;
+  lastMissileFireMs = now;
+
+  const dir = typeof playerDirection === "number" ? playerDirection : 1;
+  const spawnX = player.x + dir * 34;
+  const spawnY = player.y - 6;
+  spawnMissile(spawnX, spawnY, dir);
+}
+
+function spawnMissile(x, y, dir) {
+  if (typeof missiles === "undefined" || !missiles) return null;
+
+  const m = new missiles.Sprite(x, y, 18, 10);
+  m.rotationLock = true;
+  m.friction = 0;
+  m.bounciness = 0;
+  m.gravity = 0; // no drop
+
+  m._state = "fly"; // "fly" | "explode"
+  m._spawnMs = millis();
+  m._explodeMs = 0;
+  m._damage = 1;
+
+  m.vel.x = dir * MISSILE_SPEED;
+  m.vel.y = 0;
+
+  m.draw = () => {
+    if (m._state === "explode") {
+      const t = (millis() - (m._explodeMs || millis())) / MISSILE_EXPLOSION_MS;
+      const p = constrain(t, 0, 1);
+      const r1 = lerp(6, 42, p);
+      const r2 = lerp(10, 64, p);
+      noStroke();
+      fill(255, 140, 0, 180 * (1 - p));
+      circle(0, 0, r2);
+      fill(255, 220, 120, 220 * (1 - p));
+      circle(0, 0, r1);
+      return;
+    }
+
+    // flying missile (simple rocket)
+    push();
+    rectMode(CENTER);
+    noStroke();
+    fill(17, 24, 39);
+    rect(0, 0, m.w, m.h, 4);
+    fill(249, 115, 22);
+    rect(-m.w * 0.42, 0, 6, m.h * 0.7, 3);
+    fill(255, 220, 120, 200);
+    circle(m.w * 0.46, 0, 5);
+    pop();
+  };
+
+  return m;
+}
+
+function explodeMissile(m) {
+  // Some p5play builds don't expose a stable `.exists` flag in callbacks,
+  // so we only guard against null/undefined here.
+  if (!m) return;
+  if (m._state === "explode") return;
+  m._state = "explode";
+  m._explodeMs = millis();
+  m.vel.x = 0;
+  m.vel.y = 0;
+  m.collider = "none"; // prevent multiple hits while exploding
+}
+
+function updateMissiles() {
+  if (typeof missiles === "undefined" || !missiles) return;
+  const now = millis();
+  for (const m of missiles) {
+    if (!m) continue;
+    if (m._state === "fly") {
+      if (now - (m._spawnMs || now) > MISSILE_LIFETIME_MS) {
+        m.remove();
+      }
+    } else if (m._state === "explode") {
+      if (!m._explodeMs) m._explodeMs = now;
+      if (now - (m._explodeMs || now) > MISSILE_EXPLOSION_MS) {
+        m.remove();
+      }
+    }
+  }
+}
+
+function onMissileHitsBoss(m, b) {
+  if (!m || !b) return;
+  if (m._state !== "fly") return;
+
+  explodeMissile(m);
+
+  const dmg = typeof m._damage === "number" ? m._damage : 1;
+  if (typeof b._hp !== "number") b._hp = BOSS_MAX_HP;
+  b._hp = Math.max(0, b._hp - dmg);
+
+  if (b._hp <= 0) {
+    // Boss defeated -> win
+    b.remove?.();
+    boss = null;
+    gameState = "win";
+  }
 }
 
 
@@ -44,6 +163,9 @@ function updateGameLogic() {
   
   // Mettre à jour le mouvement des power-ups (roulement sur le sol)
   updatePowerUpsMovement();
+
+  // Enemies: collisions + mouvement linéaire
+  updateEnemies();
 
   // Génération procédurale (plateformes + cubes + arbres décor)
   if (gameState === "play" && typeof updateMapGeneration === "function") {
@@ -71,6 +193,17 @@ function updateGameLogic() {
     player.collide(boss);
   }
 
+  // Missiles update + collision against boss
+  updateMissiles();
+  if (typeof boss !== "undefined" && boss && typeof missiles !== "undefined" && missiles) {
+    missiles.overlap(boss, onMissileHitsBoss);
+  }
+
+  // Missiles vs enemies
+  if (typeof enemies !== "undefined" && enemies && typeof missiles !== "undefined" && missiles) {
+    missiles.overlap(enemies, onMissileHitsEnemy);
+  }
+
 
   if (gameState === "play") {
     player.overlap(coins, collectCoin);
@@ -78,6 +211,10 @@ function updateGameLogic() {
   // Ne pas détecter les spikes si invincible
   if (!isInvincible) {
     player.overlap(spikes, hitSpike);
+  }
+  // Enemy contact damages player (respect invincibility)
+  if (typeof enemies !== "undefined" && enemies) {
+    player.overlap(enemies, hitEnemy);
   }
   if (gameState === "play") {
     player.overlap(finishFlag, reachFinish);
@@ -96,7 +233,7 @@ function updateGameLogic() {
     const now = millis();
     if (now - lastDamageTime >= damageCooldown) {
       lastDamageTime = now;
-      playerHealth -= GAME.damagePerHit * 2; // Retirer 50% d'un cœur
+      playerHealth -= GAME.damagePerHit * 4; // Retirer 1 cœur complet
       
       if (playerHealth < 0) {
         playerHealth = 0;
@@ -117,6 +254,84 @@ function updateGameLogic() {
         setLose("You ran out of health!");
       }
     }
+  }
+}
+
+function updateEnemies() {
+  if (typeof enemies === "undefined" || !enemies) return;
+
+  // Keep enemies standing on the world
+  enemies.collide(ground);
+  if (typeof platforms !== "undefined" && platforms) enemies.collide(platforms);
+  if (typeof cubes !== "undefined" && cubes) enemies.collide(cubes);
+  if (typeof spikes !== "undefined" && spikes) enemies.collide(spikes);
+  enemies.collide(enemies); // bounce off each other and allow direction changes
+
+  for (const e of enemies) {
+    if (!e) continue;
+    const dir = typeof e._dir === "number" ? e._dir : 1;
+    const speed = typeof e._speed === "number" ? e._speed : 2;
+    e.vel.x = dir * speed;
+
+    // Reverse direction only when touching another object (not the ground).
+    const touchingObstacle =
+      (typeof cubes !== "undefined" && cubes && e.colliding(cubes)) ||
+      (typeof spikes !== "undefined" && spikes && e.colliding(spikes)) ||
+      (typeof platforms !== "undefined" && platforms && e.colliding(platforms)) ||
+      e.colliding(enemies);
+
+    if (touchingObstacle) {
+      if (!e._lastTurnFrame) e._lastTurnFrame = 0;
+      if (frameCount - e._lastTurnFrame > 10) {
+        e._dir = -dir;
+        e._lastTurnFrame = frameCount;
+        // small nudge to avoid sticking
+        e.x += e._dir * 2;
+      }
+    }
+  }
+}
+
+function onMissileHitsEnemy(m, e) {
+  if (!m || !e) return;
+  if (m._state !== "fly") return;
+  if (e._dead) return;
+
+  explodeMissile(m);
+
+  const dmg = typeof m._damage === "number" ? m._damage : 1;
+  if (typeof e._hp !== "number") e._hp = 1;
+  e._hp = Math.max(0, e._hp - dmg);
+  if (e._hp <= 0) {
+    e._dead = true;
+    // +10 points par monstre tué
+    if (typeof score === "number") score += 10;
+    e.remove?.();
+  }
+}
+
+function hitEnemy(p, e) {
+  if (!p || !e) return;
+  if (isPlayerInvincible()) return;
+
+  const now = millis();
+  if (now - lastDamageTime < damageCooldown) return;
+  lastDamageTime = now;
+
+  playerHealth -= GAME.damagePerHit * 4; // 1 cœur complet
+  if (playerHealth < 0) playerHealth = 0;
+
+  activateInvincibility();
+
+  // Knockback away from the enemy (augmenté pour ralentir plus)
+  const knockbackForce = 14;
+  const knockbackUp = -8;
+  const pushDir = p.x < e.x ? -1 : 1;
+  p.vel.x = pushDir * knockbackForce;
+  p.vel.y = knockbackUp;
+
+  if (playerHealth <= 0) {
+    setLose("You ran out of health!");
   }
 }
 
@@ -160,8 +375,8 @@ function hitSpike() {
   }
   lastDamageTime = now;
   
-  // Retirer de la vie (50% d'un cœur = 1 demi-cœur)
-  playerHealth -= GAME.damagePerHit * 2; // Convertir en demi-cœurs
+  // Retirer de la vie (1 cœur complet = 2 demi-cœurs)
+  playerHealth -= GAME.damagePerHit * 4; // 1 cœur complet
   
   // S'assurer que la vie ne devient pas négative
   if (playerHealth < 0) {
@@ -194,8 +409,8 @@ function activateInvincibility() {
 
 function applyKnockback() {
   // Effet de recul style Mario : reculer dans la direction opposée
-  const knockbackForce = 8; // Force du recul
-  const knockbackUp = -6; // Légère impulsion vers le haut
+  const knockbackForce = 14; // Force du recul (augmentée pour ralentir plus)
+  const knockbackUp = -8; // Impulsion vers le haut (augmentée)
   
   // Reculer dans la direction opposée à celle où le joueur regarde
   player.vel.x = -playerDirection * knockbackForce;
@@ -216,10 +431,12 @@ function initBossArena() {
   coins?.removeAll();
   spikes?.removeAll();
   decorTrees?.removeAll();
+  enemies?.removeAll();
   powerUps?.removeAll();
 
   // Remove the flag so it can't be triggered again
   finishFlag?.remove();
+  missiles?.removeAll?.();
 
   // Create arena bounds right after the old flag position.
   // Arena width matches the screen width so the screen borders are the limits.
@@ -246,7 +463,10 @@ function initBossArena() {
   boss?.remove?.();
   boss = new Sprite(rightX - 160, groundTop - 28, 70, 70, "static");
   boss.rotationLock = true;
+  boss._hp = BOSS_MAX_HP;
+  boss._maxHp = BOSS_MAX_HP;
   boss.draw = () => {
+    // --- Boss sprite ---
     const img = typeof mapAssets !== "undefined" ? mapAssets.monstre : null;
     if (img && img.width) {
       push();
@@ -256,13 +476,37 @@ function initBossArena() {
       const targetW = targetH * aspectRatio;
       image(img, 0, -6, targetW, targetH);
       pop();
-      return;
+    } else {
+      // Fallback if SVG not loaded
+      noStroke();
+      fill(255);
+      circle(0, 0, 68);
     }
 
-    // Fallback if SVG not loaded
+    // --- Boss HP bar (above) ---
+    const maxHp = typeof boss._maxHp === "number" ? boss._maxHp : BOSS_MAX_HP;
+    const hp = typeof boss._hp === "number" ? boss._hp : maxHp;
+    const p = maxHp > 0 ? constrain(hp / maxHp, 0, 1) : 0;
+
+    const barW = 78;
+    const barH = 10;
+    const y = -boss.h * 0.85 - 16;
+
+    push();
+    rectMode(CENTER);
     noStroke();
-    fill(255);
-    circle(0, 0, 68);
+    // Background
+    fill(15, 23, 42, 220);
+    rect(0, y, barW, barH, 6);
+    // Fill
+    fill(239, 68, 68, 240);
+    rect(-barW * 0.5 + (barW * p) * 0.5, y, barW * p, barH, 6);
+    // Border
+    noFill();
+    stroke(255, 255, 255, 180);
+    strokeWeight(2);
+    rect(0, y, barW, barH, 6);
+    pop();
   };
 }
 
@@ -458,6 +702,8 @@ function restartGame() {
   boss = null;
   arenaWalls?.removeAll?.();
   arenaWalls = null;
+  missiles?.removeAll?.();
+  lastMissileFireMs = -Infinity;
 
   // Réafficher tous les sprites
   if (typeof allSprites !== "undefined") {
@@ -473,7 +719,9 @@ function restartGame() {
   coins?.removeAll();
   cubes?.removeAll();
   decorTrees?.removeAll();
+  enemies?.removeAll();
   powerUps?.removeAll();
+  missiles?.removeAll();
 
   buildLevel();
   createPlayer();
